@@ -125,3 +125,23 @@ class PktapHeader(Structure):
 
     def __str__(self):
         return format_structure(self)
+
+
+class PcapStat(Structure):
+    """
+    Structure returned by the pcap_stats()
+    See document of libpcap for details
+    struct pcap_stat {
+        u_int ps_recv;		/* number of packets received */
+        u_int ps_drop;		/* number of packets dropped */
+        u_int ps_ifdrop;	/* drops by interface -- only supported on some platforms */
+    };
+    """
+    _fields_ = [
+        ("ps_recv", c_uint),    # number of packets received
+        ("ps_drop", c_uint),    # number of packets dropped
+        ("ps_ifdrop", c_uint),  # drops by interface -- only supported on some platforms
+    ]
+
+    def __str__(self):
+        return format_structure(self)

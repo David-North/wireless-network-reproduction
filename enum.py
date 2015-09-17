@@ -11,6 +11,7 @@ Defaults = enum(
     PKTAP_SIZE=512,
     SOCKET_ADDR_SIZE=16,
     ERROR_MSG_SIZE=256,
+    IPFW_RULE_SIZE=192,
 )
 
 

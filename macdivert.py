@@ -3,11 +3,11 @@
 import os
 from copy import deepcopy
 from ctypes import cdll
+from enum import Defaults
 from ctypes import POINTER, pointer, cast
 from ctypes import (c_uint, c_void_p, c_uint32, c_char_p, ARRAY, c_uint64, c_int16, c_int,
-                    create_string_buffer, c_uint8, c_ulong, c_long, c_longlong)
-from enum import Defaults, Flags, Dump_flags
-from models import PktapHeader, IpHeader, PacketHeader
+                    create_string_buffer, c_uint8, c_ulong, c_long, c_longlong, c_ushort)
+from models import PktapHeader, IpHeader, PacketHeader, PcapStat
 
 __author__ = 'huangyan13@baidu.com'
 
@@ -21,12 +21,19 @@ class MacDivert:
         "divert_loop": [c_void_p, c_int],
         "divert_is_looping": [c_void_p],
         "divert_loop_stop": [c_void_p],
+        "divert_bpf_stats": [c_void_p, POINTER(PcapStat)],
         "divert_read": [c_void_p, c_char_p, c_char_p, c_char_p],
         "divert_reinject": [c_void_p, c_char_p, c_int, c_char_p],
         "divert_close": [c_void_p, c_char_p],
 
         # util functions
         "divert_dump_packet": [c_char_p, POINTER(PacketHeader), c_uint32, c_char_p],
+
+        # note that we use char[] to store the ipfw rule for convenience
+        # although the type is mismatched, the length of pointer variable is the same
+        # so this would work
+        "ipfw_compile_rule": [c_char_p, c_ushort, c_char_p, c_char_p],
+        "ipfw_print_rule": [c_char_p],
     }
 
     divert_restypes = {
@@ -36,11 +43,14 @@ class MacDivert:
         "divert_loop": None,
         "divert_is_looping": c_int,
         "divert_loop_stop": None,
+        "divert_bpf_stats": c_int,
         "divert_read": c_long,
         "divert_reinject": c_long,
         "divert_close": c_int,
 
         "divert_dump_packet": c_char_p,
+        "ipfw_compile_rule": c_int,
+        "ipfw_print_rule": None,
     }
 
     def __init__(self, lib_path='', encoding='utf-8'):
@@ -87,7 +97,7 @@ class MacDivert:
         """
         return self._lib
 
-    def open_handle(self, port=0, filter_str="", flags=0):
+    def open_handle(self, port=0, filter_str="", flags=0, count=-1):
         """
         Return a new handle already opened
         :param port: the port number to be diverted to, use 0 to auto select a unused port
@@ -95,11 +105,11 @@ class MacDivert:
         :param flags: choose different mode
         :return: An opened Handle instance
         """
-        return Handle(self, port, filter_str, flags, self.encoding).open()
+        return Handle(self, port, filter_str, flags, count, self.encoding).open()
 
 
 class Handle:
-    def __init__(self, libdivert=None, port=0, filter_str="", flags=0, encoding='utf-8'):
+    def __init__(self, libdivert=None, port=0, filter_str="", flags=0, count=-1, encoding='utf-8'):
         if not libdivert:
             # Try to construct by loading from the library path
             self._libdivert = MacDivert()
@@ -116,43 +126,71 @@ class Handle:
         self._errmsg = create_string_buffer(Defaults.ERROR_MSG_SIZE)
         self._lib = self._libdivert.get_reference()
         self._port = port
+        self._count = count
         self._filter = filter_str.encode(encoding)
         self._flags = flags
         self.encoding = encoding
         # create divert handle
         self._handle = self._lib.divert_create(self._port, self._flags, self._errmsg)
+        self.active = False
+
+    def __del__(self):
+        self.close()
+
+    def ipfw_compile_rule(self, rule_str, port):
+        rule_data = create_string_buffer(Defaults.IPFW_RULE_SIZE)
+        if self._lib.ipfw_compile_rule(rule_data, port, rule_str, self._errmsg) != 0:
+            raise RuntimeError("Error rule: %s" % self._errmsg.value)
+        return rule_data[0:Defaults.IPFW_RULE_SIZE]
+
+    def ipfw_print_rule(self, rule_data):
+        self._lib.ipfw_print_rule(rule_data)
 
     @property
-    def is_opened(self):
-        return self._handle is not None
+    def is_active(self):
+        if self.active:
+            return self._lib.divert_is_looping(self._handle) != 0
+        else:
+            return False
 
     def open(self):
         if self._lib.divert_activate(self._handle, self._errmsg) != 0:
             raise RuntimeError(self._errmsg.value)
+        self.active = True
 
         if self._filter:
-            if self._lib.divert_set_filter(self._handle,
-                                           self._filter,
-                                           self._errmsg) != 0:
-                raise RuntimeError(self._errmsg.value)
+            self.set_filter(self._filter)
 
-        self._lib.divert_loop(self._handle, -1)
+        self._lib.divert_loop(self._handle, self._count)
         return self
 
+    def set_filter(self, filter_str):
+        if self.is_active and filter_str:
+            if self._lib.divert_set_filter(self._handle,
+                                           filter_str,
+                                           self._errmsg) != 0:
+                raise RuntimeError("Error rule: %s" % self._errmsg.value)
+            else:
+                return True
+        else:
+            return False
+
     def read(self):
+        if not self.active:
+            return None
+
         status = self._lib.divert_read(self._handle,
                                        self._pktap_header,
                                        self._ip_packet,
                                        self._sockaddr)
-        result = {
-            'pktap': None,
-            'packet': None,
-            'sockaddr': None,
-        }
+        if status != 0:
+            return None
+
+        result = Packet()
 
         # try to extract the PKTAP header
         ptr_pktap = cast(self._pktap_header, POINTER(PktapHeader))
-        if ptr_pktap[0].pth_comm > 0:
+        if ptr_pktap[0].pth_length > 0:
             result['pktap'] = deepcopy(ptr_pktap[0])
 
         # check if IP header is legal
@@ -162,18 +200,68 @@ class Handle:
         if packet_length > 0 and header_len > 0:
             result['packet'] = self._ip_packet[0:packet_length]
 
-        # save the sockaddr for reinject
+        # save the sockaddr for re-inject
         result['sockaddr'] = self._sockaddr[0:Defaults.SOCKET_ADDR_SIZE]
         return result
 
-    def reinject(self, ip_packet, sockaddr):
-        pass
+    def write(self, packet_obj):
+        if not self.active:
+            raise RuntimeError("Divert handle not opened.")
+
+        return self._lib.divert_reinject(self._handle, packet_obj.packet, -1, packet_obj.sockaddr)
 
     def close(self):
-        if self._handle:
+        if self.active:
             # first stop the event loop
             self._lib.divert_loop_stop(self._handle)
 
             # then close the divert handle
             if self._lib.divert_close(self._handle, self._errmsg) != 0:
                 raise RuntimeError(self._errmsg.value)
+
+            self.active = False
+
+    def stats(self):
+        if not self.active:
+            raise RuntimeError("Divert handle not opened.")
+
+        statics_info = PcapStat()
+        status = self._lib.divert_bpf_stats(self._handle, pointer(statics_info))
+        if status != 0:
+            return None
+        else:
+            return statics_info
+
+    # Context Manager protocol
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, *args):
+        self.close()
+
+
+class Packet:
+    def __init__(self):
+        self.pktap = None
+        self.packet = None
+        self.sockaddr = None
+
+    def __setitem__(self, key, value):
+        if key == 'pktap':
+            self.pktap = value
+        elif key == 'packet':
+            self.packet = value
+        elif key == 'sockaddr':
+            self.sockaddr = value
+        else:
+            raise KeyError("No suck key: %s" % key)
+
+    def __getitem__(self, item):
+        if item == 'pktap':
+            return self.pktap
+        elif item == 'packet':
+            return self.packet
+        elif item == 'sockaddr':
+            return self.sockaddr
+        else:
+            return None
