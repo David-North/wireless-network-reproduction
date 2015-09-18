@@ -1,8 +1,11 @@
 # encoding: utf8
 
-from macdivert import MacDivert, Handle
+import os
+import sys
+sys.path.append(os.getcwd())
+from macdivert.macdivert import MacDivert, Handle
+from macdivert.enum import Flags
 from impacket import ImpactDecoder
-from enum import Flags
 import signal
 
 __author__ = 'huangyan13@baidu.com'
@@ -30,9 +33,15 @@ def work():
             divert_handle = fid
         while not fid.eof:
             packet = fid.read()
-            if packet.valid and not packet.pktap:
+            if packet.valid:
+                if fid.is_inbound(packet.sockaddr):
+                    print 'packet is in bound:'
+                elif fid.is_outbound(packet.sockaddr):
+                    print 'packet is out bound:'
+                else:
+                    print 'impossible packet!'
                 print decoder.decode(packet.packet)
-            if not packet.valid:
+            else:
                 print "error code is: %d" % packet.flag
             if packet.valid and not fid.eof:
                 fid.write(packet)

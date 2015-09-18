@@ -25,6 +25,8 @@ class MacDivert:
         "divert_read": [c_void_p, c_char_p, c_char_p, c_char_p],
         "divert_reinject": [c_void_p, c_char_p, c_int, c_char_p],
         "divert_close": [c_void_p, c_char_p],
+        "divert_is_inbound": [c_char_p, c_void_p],
+        "divert_is_outbound": [c_char_p],
 
         # util functions
         "divert_dump_packet": [c_char_p, POINTER(PacketHeader), c_uint32, c_char_p],
@@ -47,6 +49,8 @@ class MacDivert:
         "divert_read": c_long,
         "divert_reinject": c_long,
         "divert_close": c_int,
+        "divert_is_inbound": c_int,
+        "divert_is_outbound": c_int,
 
         "divert_dump_packet": c_char_p,
         "ipfw_compile_rule": c_int,
@@ -242,6 +246,12 @@ class Handle:
             return None
         else:
             return statics_info
+
+    def is_inbound(self, sockaddr):
+        return self._lib.divert_is_inbound(sockaddr, None) != 0
+
+    def is_outbound(self, sockaddr):
+        return self._lib.divert_is_outbound(sockaddr) != 0
 
     # Context Manager protocol
     def __enter__(self):
