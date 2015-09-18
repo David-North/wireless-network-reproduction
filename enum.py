@@ -28,3 +28,26 @@ Dump_flags = enum(
     DIVERT_DUMP_ETHER_HERDER=(1 << 2),
     DIVERT_DUMP_IP_HEADER=(1 << 3),
 )
+
+"""
+#define DIVERT_READ_EOF             (-1)
+#define DIVERT_READ_UNKNOWN_FLAG    (-2)
+#define DIVERT_RAW_BPF_PACKET       (1u)
+#define DIVERT_RAW_IP_PACKET        (1u << 1)
+#define DIVERT_ERROR_BPF_INVALID    (1u << 2)
+#define DIVERT_ERROR_BPF_NODATA     (1u << 3)
+#define DIVERT_ERROR_DIVERT_NODATA  (1u << 4)
+#define DIVERT_STOP_LOOP            (1u << 5)
+#define DIVERT_ERROR_KQUEUE         (1u << 6)
+"""
+Read_stats = enum(
+    DIVERT_READ_EOF=-1,
+    DIVERT_READ_UNKNOWN_FLAG=-2,
+    DIVERT_RAW_BPF_PACKET=1,
+    DIVERT_RAW_IP_PACKET=(1 << 1),
+    DIVERT_ERROR_BPF_INVALID=(1 << 2),
+    DIVERT_ERROR_BPF_NODATA=(1 << 3),
+    DIVERT_ERROR_DIVERT_NODATA=(1 << 4),
+    DIVERT_STOP_LOOP=(1 << 5),
+    DIVERT_ERROR_KQUEUE=(1 << 6),
+)
