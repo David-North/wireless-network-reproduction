@@ -15,8 +15,7 @@ import re
 __author__ = 'huangyan13@baidu.com'
 
 
-lib_path = '/Users/baidu/Library/Caches/clion11/cmake/generated/b28c2630/b28c2630/Release/libdivert.dylib'
-libdivert = MacDivert(lib_path)
+libdivert = MacDivert()
 
 divert_handle = None
 
@@ -28,10 +27,8 @@ def int_handler(signum, frame):
 
 
 def work():
-    pattern = re.compile("compiler", re.IGNORECASE)
     global divert_handle
     ip_decoder = ImpactDecoder.IPDecoder()
-    tcp_decoder = ImpactDecoder.TCPDecoder()
     signal.signal(signal.SIGINT, int_handler)
     with Handle(libdivert, 0, "tcp from any to any via en0",
                 Flags.DIVERT_FLAG_WITH_PKTAP, -1) as fid:

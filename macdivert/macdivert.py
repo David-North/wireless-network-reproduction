@@ -60,26 +60,28 @@ class MacDivert:
     def __init__(self, lib_path='', encoding='utf-8'):
         """
         Constructs a new driver instance
-        :param lib_path: The OS path where to load the libdivert.dylib
+        :param lib_path: The OS path where to load the libdivert.so
         :param encoding: The character encoding to use (defaults to UTF-8)
         :return:
         """
         if not (lib_path and os.path.exists(lib_path) and os.path.isfile(lib_path)):
             lib_path = self._find_lib()
             if not lib_path:
-                raise RuntimeError("Unable to find libdivert.dylib")
+                raise RuntimeError("Unable to find libdivert.so")
 
         self.dll_path = lib_path
         self.encoding = encoding
         self._load_lib(lib_path)
 
-    def _find_lib(self):
-        return ''
+    @staticmethod
+    def _find_lib():
+        module_path = os.sep.join(__file__.split(os.sep)[0:-1])
+        return os.path.join(module_path, 'libdivert.so')
 
     def _load_lib(self, lib_path):
         """
         Loads the libdivert library, and configuring its arguments type
-        :param lib_path: The OS path where to load the libdivert.dylib
+        :param lib_path: The OS path where to load the libdivert.so
         :return: None
         """
         self._lib = cdll.LoadLibrary(lib_path)

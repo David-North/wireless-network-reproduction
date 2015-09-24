@@ -11,8 +11,7 @@ import signal
 __author__ = 'huangyan13@baidu.com'
 
 
-lib_path = '/Users/baidu/Library/Caches/clion11/cmake/generated/b28c2630/b28c2630/Release/libdivert.dylib'
-libdivert = MacDivert(lib_path)
+libdivert = MacDivert()
 
 divert_handle = None
 
