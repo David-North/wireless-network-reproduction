@@ -27,6 +27,8 @@ class MacDivert:
         "divert_close": [c_void_p, c_char_p],
         "divert_is_inbound": [c_char_p, c_void_p],
         "divert_is_outbound": [c_char_p],
+        "divert_set_signal_handler": [c_int, c_void_p, c_void_p],
+        "divert_signal_handler_stop_loop": [c_int, c_void_p],
 
         # util functions
         "divert_dump_packet": [c_char_p, POINTER(PacketHeader), c_uint32, c_char_p],
@@ -51,6 +53,8 @@ class MacDivert:
         "divert_close": c_int,
         "divert_is_inbound": c_int,
         "divert_is_outbound": c_int,
+        "divert_set_signal_handler": c_int,
+        "divert_signal_handler_stop_loop": None,
 
         "divert_dump_packet": c_char_p,
         "ipfw_compile_rule": c_int,
@@ -141,11 +145,16 @@ class Handle:
         self._handle = self._lib.divert_create(self._port,
                                                self._flags | Flags.DIVERT_FLAG_BLOCK_IO,
                                                self._errmsg)
+        self._cleaned = True
         # create active flag
         self.active = False
 
     def __del__(self):
-        self.close()
+        if not self._cleaned:
+            self._cleaned = True
+            # free close the divert handle
+            if self._lib.divert_close(self._handle, self._errmsg) != 0:
+                raise RuntimeError(self._errmsg.value)
 
     def ipfw_compile_rule(self, rule_str, port):
         rule_data = create_string_buffer(Defaults.IPFW_RULE_SIZE)
@@ -159,7 +168,11 @@ class Handle:
     @property
     def eof(self):
         if self.active:
-            return self._lib.divert_is_looping(self._handle) == 0
+            if self._lib.divert_is_looping(self._handle) == 0:
+                self.active = False
+                return True
+            else:
+                return False
         else:
             return True
 
@@ -171,6 +184,7 @@ class Handle:
         if self._lib.divert_activate(self._handle, self._errmsg) != 0:
             raise RuntimeError(self._errmsg.value)
         self.active = True
+        self._cleaned = False
 
         if self._filter:
             self.set_filter(self._filter)
@@ -181,13 +195,8 @@ class Handle:
 
     def close(self):
         if self.active:
-            # first stop the event loop
+            # stop the event loop
             self._lib.divert_loop_stop(self._handle)
-
-            # then close the divert handle
-            if self._lib.divert_close(self._handle, self._errmsg) != 0:
-                raise RuntimeError(self._errmsg.value)
-
             self.active = False
 
     def set_filter(self, filter_str):
@@ -203,9 +212,9 @@ class Handle:
 
     def read(self):
         status = self._lib.divert_read(self._handle,
-                                   self._pktap_header,
-                                   self._ip_packet,
-                                   self._sockaddr)
+                                       self._pktap_header,
+                                       self._ip_packet,
+                                       self._sockaddr)
         ret_val = Packet()
         if status == 0:
             # try to extract the PKTAP header
@@ -239,8 +248,8 @@ class Handle:
         return self._lib.divert_reinject(self._handle, packet_obj.packet, -1, packet_obj.sockaddr)
 
     def stats(self):
-        if self.eof:
-            raise RuntimeError("Divert handle EOF.")
+        if self._cleaned:
+            raise RuntimeError("Divert handle is not allocated.")
 
         statics_info = PcapStat()
         status = self._lib.divert_bpf_stats(self._handle, pointer(statics_info))
@@ -254,6 +263,11 @@ class Handle:
 
     def is_outbound(self, sockaddr):
         return self._lib.divert_is_outbound(sockaddr) != 0
+
+    def set_stop_signal(self, signum):
+        return self._lib.divert_set_signal_handler(
+            signum, self._lib.divert_signal_handler_stop_loop, self._handle
+        )
 
     # Context Manager protocol
     def __enter__(self):

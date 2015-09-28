@@ -2,27 +2,16 @@
 
 import os
 import sys
-
 sys.path.append(os.getcwd())
 from macdivert.macdivert import MacDivert, Handle
 from macdivert.enum import Flags
-from copy import deepcopy
-import signal
-from macdivert import libdivert as nids
+from macdivert import nids
+from signal import SIGINT
+
 
 __author__ = 'huangyan13@baidu.com'
 
-divert_file = MacDivert()
-
-divert_handle = None
-
 end_states = (nids.NIDS_CLOSE, nids.NIDS_TIMEOUT, nids.NIDS_RESET)
-
-
-def int_handler(signum, frame):
-    if divert_handle:
-        print divert_handle.stats()
-        divert_handle.close()
 
 
 def tcp_callback(tcp):
@@ -47,22 +36,21 @@ def tcp_callback(tcp):
 
 
 def work():
-    global divert_handle
-    signal.signal(signal.SIGINT, int_handler)
+    divert_file = MacDivert()
     with Handle(divert_file, 0, "ip from any to any",
                 Flags.DIVERT_FLAG_WITH_PKTAP |
-                        Flags.DIVERT_FLAG_TCP_REASSEM, -1) as fid:
-
+                Flags.DIVERT_FLAG_TCP_REASSEM, -1) as fid:
+        # register stop loop signal
+        fid.set_stop_signal(SIGINT)
+        # register TCP callback function
         nids.register_tcp(tcp_callback)
 
-        # save the fid
-        if not divert_handle:
-            divert_handle = fid
-        # register TCP callback function
         while not fid.eof:
+            # read a packet and write it back
             packet = fid.read()
             if packet.valid and not fid.eof:
                 fid.write(packet)
+        print fid.stats()
 
 
 if __name__ == '__main__':

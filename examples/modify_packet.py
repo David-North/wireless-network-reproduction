@@ -6,35 +6,20 @@ sys.path.append(os.getcwd())
 from macdivert.macdivert import MacDivert, Handle
 from macdivert.enum import Flags
 from impacket import ImpactDecoder, ImpactPacket
+from signal import SIGINT
 import random
-import signal
 import socket
-import re
-
 
 __author__ = 'huangyan13@baidu.com'
 
 
-libdivert = MacDivert()
-
-divert_handle = None
-
-
-def int_handler(signum, frame):
-    if divert_handle:
-        print divert_handle.stats()
-        divert_handle.close()
-
-
-def work():
-    global divert_handle
+def work(rate):
+    libdivert = MacDivert()
     ip_decoder = ImpactDecoder.IPDecoder()
-    signal.signal(signal.SIGINT, int_handler)
     with Handle(libdivert, 0, "tcp from any to any via en0",
                 Flags.DIVERT_FLAG_WITH_PKTAP, -1) as fid:
-        # save the fid
-        if not divert_handle:
-            divert_handle = fid
+        # register stop loop signal
+        fid.set_stop_signal(SIGINT)
         while not fid.eof:
             divert_packet = fid.read()
             if divert_packet.valid and not fid.eof:
@@ -46,7 +31,7 @@ def work():
                     # extract the payload
                     payload = tcp_packet.get_data_as_string()
                     # if there is payload of this TCP packet
-                    if len(payload) > 0 and random.random() < 0.05:
+                    if len(payload) > 0 and random.random() < rate:
                         # modify one byte of the packet
                         modify_pos = random.randint(0, len(payload) - 1)
                         payload = payload[0:modify_pos] + '\x02' + payload[modify_pos + 1:]
@@ -66,4 +51,7 @@ def work():
 
 
 if __name__ == '__main__':
-    work()
+    if len(sys.argv) < 2:
+        print 'Usage: python modify_packet.py <modify_rate>'
+    else:
+        work(float(sys.argv[1]))
