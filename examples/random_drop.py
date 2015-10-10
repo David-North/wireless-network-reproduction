@@ -3,8 +3,7 @@
 import os
 import sys
 sys.path.append(os.getcwd())
-from macdivert.macdivert import MacDivert, Handle
-from macdivert.enum import Flags
+from macdivert import MacDivert, Handle
 from random import random
 from signal import SIGINT
 
@@ -16,19 +15,18 @@ def work(pid, rate):
     num_dropped = 0
     num_with_pktap = 0
     libdivert = MacDivert()
-    with Handle(libdivert, 0, "ip from any to any in via en0",
-                Flags.DIVERT_FLAG_WITH_PKTAP, -1) as fid:
+    with Handle(libdivert, 0, "ip from any to any in via en0") as fid:
         # register stop loop signal
         fid.set_stop_signal(SIGINT)
         while not fid.eof:
             packet = fid.read()
             if packet.valid:
                 num_total += 1
-                if packet.pktap and packet.pktap.pth_pid != -1:
+                if packet.proc and packet.proc.pid != -1:
                     num_with_pktap += 1
 
             if packet.valid and not fid.eof:
-                if packet.pktap and packet.pktap.pth_pid == pid:
+                if packet.proc and packet.proc.pid == pid:
                     if random() < 1 - rate:
                         fid.write(packet)
                     else:
@@ -37,7 +35,7 @@ def work(pid, rate):
                     fid.write(packet)
 
         print "Packets total: %d" % num_total
-        print "Packets with PKTAP info: %d" % num_with_pktap
+        print "Packets with process info: %d" % num_with_pktap
         print "Packets dropped: %d" % num_dropped
         print "Accuracy: %f" % (float(num_with_pktap) / num_total)
 

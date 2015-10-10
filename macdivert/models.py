@@ -72,6 +72,25 @@ class IpHeader(Structure):
         return format_structure(self)
 
 
+class ProcInfo(Structure):
+    """
+    typedef struct {
+        pid_t pid;
+        pid_t epid;
+        char comm[MAX_COMM_LEN];
+    } proc_info_t;
+    """
+    MAXCOMLEN = 32
+    _fields_ = [
+        ("pid", c_int32),
+        ("epid", c_int32),
+        ("comm", c_char * MAXCOMLEN),
+    ]
+
+    def __str__(self):
+        return format_structure(self)
+
+
 class PktapHeader(Structure):
     """
     Ctypes structure for apple PKTAP header definition.
@@ -138,8 +157,8 @@ class PcapStat(Structure):
     };
     """
     _fields_ = [
-        ("ps_recv", c_uint),    # number of packets received
-        ("ps_drop", c_uint),    # number of packets dropped
+        ("ps_recv", c_uint),  # number of packets received
+        ("ps_drop", c_uint),  # number of packets dropped
         ("ps_ifdrop", c_uint),  # drops by interface -- only supported on some platforms
     ]
 

@@ -7,7 +7,7 @@ from enum import Defaults, Flags, Read_stats
 from ctypes import POINTER, pointer, cast
 from ctypes import (c_uint, c_void_p, c_uint32, c_char_p, ARRAY, c_uint64, c_int16, c_int,
                     create_string_buffer, c_uint8, c_ulong, c_long, c_longlong, c_ushort)
-from models import PktapHeader, IpHeader, PacketHeader, PcapStat
+from models import ProcInfo, PktapHeader, IpHeader, PacketHeader, PcapStat
 
 __author__ = 'huangyan13@baidu.com'
 
@@ -128,8 +128,8 @@ class Handle:
             self._libdivert = libdivert
         # buffer to store packet data
         self._ip_packet = create_string_buffer(Defaults.PACKET_BUFFER_SIZE)
-        # buffer to store pktap header
-        self._pktap_header = create_string_buffer(Defaults.PKTAP_SIZE)
+        # buffer to store process information
+        self._proc_info_buffer = create_string_buffer(Defaults.PKTAP_SIZE)
         # buffer to store socket address
         self._sockaddr = create_string_buffer(Defaults.SOCKET_ADDR_SIZE)
 
@@ -212,22 +212,27 @@ class Handle:
 
     def read(self):
         status = self._lib.divert_read(self._handle,
-                                       self._pktap_header,
+                                       self._proc_info_buffer,
                                        self._ip_packet,
                                        self._sockaddr)
         ret_val = Packet()
         if status == 0:
-            # try to extract the PKTAP header
-            ptr_pktap = cast(self._pktap_header, POINTER(PktapHeader))
-            if ptr_pktap[0].pth_length > 0:
-                ret_val.pktap = deepcopy(ptr_pktap[0])
+            # try to extract the process information
+            if self._flags & Flags.DIVERT_FLAG_USE_PKTAP:
+                ptr_pktap = cast(self._proc_info_buffer, POINTER(PktapHeader))
+                if ptr_pktap[0].pth_length > 0:
+                    ret_val.proc = deepcopy(ptr_pktap[0])
+            else:
+                ptr_proc_info = cast(self._proc_info_buffer, POINTER(ProcInfo))
+                if ptr_proc_info[0].pid != -1 or ptr_proc_info[0].epid != -1:
+                    ret_val.proc = deepcopy(ptr_proc_info[0])
 
             # check if IP header is legal
             ptr_packet = cast(self._ip_packet, POINTER(IpHeader))
             header_len = ptr_packet[0].get_header_length()
             packet_length = ptr_packet[0].get_total_length()
             if packet_length > 0 and header_len > 0:
-                ret_val.packet = self._ip_packet[0:packet_length]
+                ret_val.ip_data = self._ip_packet[0:packet_length]
 
             # save the sockaddr for re-inject
             ret_val.sockaddr = self._sockaddr[0:Defaults.SOCKET_ADDR_SIZE]
@@ -242,10 +247,10 @@ class Handle:
         if self.eof:
             raise RuntimeError("Divert handle EOF.")
 
-        if not packet_obj or not packet_obj.sockaddr or not packet_obj.packet:
+        if not packet_obj or not packet_obj.sockaddr or not packet_obj.ip_data:
             raise RuntimeError("Invalid packet data.")
 
-        return self._lib.divert_reinject(self._handle, packet_obj.packet, -1, packet_obj.sockaddr)
+        return self._lib.divert_reinject(self._handle, packet_obj.ip_data, -1, packet_obj.sockaddr)
 
     def stats(self):
         if self._cleaned:
@@ -279,17 +284,17 @@ class Handle:
 
 class Packet:
     def __init__(self):
-        self.pktap = None
-        self.packet = None
+        self.proc = None
+        self.ip_data = None
         self.sockaddr = None
         self.valid = False
         self.flag = 0
 
     def __setitem__(self, key, value):
-        if key == 'pktap':
-            self.pktap = value
+        if key == 'proc':
+            self.proc = value
         elif key == 'packet':
-            self.packet = value
+            self.ip_data = value
         elif key == 'sockaddr':
             self.sockaddr = value
         elif key == 'flag':
@@ -298,10 +303,10 @@ class Packet:
             raise KeyError("No suck key: %s" % key)
 
     def __getitem__(self, item):
-        if item == 'pktap':
-            return self.pktap
+        if item == 'proc':
+            return self.proc
         elif item == 'packet':
-            return self.packet
+            return self.ip_data
         elif item == 'sockaddr':
             return self.sockaddr
         elif item == 'flag':

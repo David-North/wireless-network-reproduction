@@ -17,8 +17,8 @@ Defaults = enum(
 
 # refer to divert.h
 Flags = enum(
-    DIVERT_FLAG_WITH_PKTAP=1,
-    DIVERT_FLAG_PRECISE_INFO=(1 << 1),
+    DIVERT_FLAG_USE_PKTAP=1,
+    DIVERT_FLAG_AUTO_FREE=(1 << 1),
     DIVERT_FLAG_BLOCK_IO=(1 << 2),
     DIVERT_FLAG_TCP_REASSEM=(1 << 3)
 )

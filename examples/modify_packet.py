@@ -3,8 +3,7 @@
 import os
 import sys
 sys.path.append(os.getcwd())
-from macdivert.macdivert import MacDivert, Handle
-from macdivert.enum import Flags
+from macdivert import MacDivert, Handle
 from impacket import ImpactDecoder, ImpactPacket
 from signal import SIGINT
 import random
@@ -16,15 +15,14 @@ __author__ = 'huangyan13@baidu.com'
 def work(rate):
     libdivert = MacDivert()
     ip_decoder = ImpactDecoder.IPDecoder()
-    with Handle(libdivert, 0, "tcp from any to any via en0",
-                Flags.DIVERT_FLAG_WITH_PKTAP, -1) as fid:
+    with Handle(libdivert, 0, "tcp from any to any via en0") as fid:
         # register stop loop signal
         fid.set_stop_signal(SIGINT)
         while not fid.eof:
             divert_packet = fid.read()
             if divert_packet.valid and not fid.eof:
                 # decode the IP packet
-                ip_packet = ip_decoder.decode(divert_packet.packet)
+                ip_packet = ip_decoder.decode(divert_packet.ip_data)
                 if ip_packet.get_ip_p() == socket.IPPROTO_TCP:
                     # extract the TCP packet
                     tcp_packet = ip_packet.child()
@@ -46,7 +44,7 @@ def work(rate):
                         # update the packet checksum
                         ip_packet.calculate_checksum()
                         # finally replace the raw data of diverted packet with modified one
-                        divert_packet.packet = ip_packet.get_packet()
+                        divert_packet.ip_data = ip_packet.get_packet()
                 fid.write(divert_packet)
 
 
