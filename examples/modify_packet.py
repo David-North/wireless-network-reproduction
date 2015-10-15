@@ -3,7 +3,7 @@
 import os
 import sys
 sys.path.append(os.getcwd())
-from macdivert import MacDivert, Handle
+from macdivert import MacDivert, DivertHandle
 from impacket import ImpactDecoder, ImpactPacket
 from signal import SIGINT
 import random
@@ -15,7 +15,7 @@ __author__ = 'huangyan13@baidu.com'
 def work(rate):
     libdivert = MacDivert()
     ip_decoder = ImpactDecoder.IPDecoder()
-    with Handle(libdivert, 0, "tcp from any to any via en0") as fid:
+    with DivertHandle(libdivert, 0, "tcp from any to any via en0") as fid:
         # register stop loop signal
         fid.set_stop_signal(SIGINT)
         while not fid.eof:

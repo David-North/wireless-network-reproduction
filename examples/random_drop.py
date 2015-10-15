@@ -3,7 +3,7 @@
 import os
 import sys
 sys.path.append(os.getcwd())
-from macdivert import MacDivert, Handle
+from macdivert import MacDivert, DivertHandle
 from random import random
 from signal import SIGINT
 
@@ -15,7 +15,7 @@ def work(pid, rate):
     num_dropped = 0
     num_with_pktap = 0
     libdivert = MacDivert()
-    with Handle(libdivert, 0, "ip from any to any in via en0") as fid:
+    with DivertHandle(libdivert, 0, "ip from any to any in via en0") as fid:
         # register stop loop signal
         fid.set_stop_signal(SIGINT)
         while not fid.eof:

@@ -29,6 +29,8 @@ class MacDivert:
         "divert_is_outbound": [c_char_p],
         "divert_set_signal_handler": [c_int, c_void_p, c_void_p],
         "divert_signal_handler_stop_loop": [c_int, c_void_p],
+        "divert_init_pcap": [c_void_p, c_char_p],
+        "divert_dump_pcap": [c_void_p, c_void_p, c_char_p],
 
         # util functions
         "divert_dump_packet": [c_char_p, POINTER(PacketHeader), c_uint32, c_char_p],
@@ -55,6 +57,8 @@ class MacDivert:
         "divert_is_outbound": c_int,
         "divert_set_signal_handler": c_int,
         "divert_signal_handler_stop_loop": None,
+        "divert_init_pcap": c_int,
+        "divert_dump_pcap": c_int,
 
         "divert_dump_packet": c_char_p,
         "ipfw_compile_rule": c_int,
@@ -114,12 +118,12 @@ class MacDivert:
         :param filter_str: the filter string
         :param flags: choose different mode
         :param count: how many packets to divert, negative number means unlimited
-        :return: An opened Handle instance
+        :return: An opened DivertHandle instance
         """
-        return Handle(self, port, filter_str, flags, count, self.encoding).open()
+        return DivertHandle(self, port, filter_str, flags, count, self.encoding).open()
 
 
-class Handle:
+class DivertHandle:
     def __init__(self, libdivert=None, port=0, filter_str="", flags=0, count=-1, encoding='utf-8'):
         if not libdivert:
             # Try to construct by loading from the library path
@@ -192,6 +196,9 @@ class Handle:
         self._lib.divert_loop(self._handle, self._count)
 
         return self
+
+    def open_pcap(self, filename):
+        return PcapHandle(filename, self._libdivert)
 
     def close(self):
         if self.active:
@@ -280,6 +287,60 @@ class Handle:
 
     def __exit__(self, *args):
         self.close()
+
+
+class PcapHandle:
+    libc_argtypes = {
+        "fopen": [c_char_p, c_char_p],
+        "fclose": [c_void_p],
+    }
+
+    libc_restypes = {
+        'fopen': c_void_p,
+        'fclose': c_int,
+    }
+
+    def __init__(self, filename=None, libdivert=None):
+        self.filename = filename
+        self._load_libc()
+        self._lib = libdivert.get_reference()
+        self._errmsg = create_string_buffer(Defaults.PACKET_BUFFER_SIZE)
+
+        self._fp = self._libc.fopen(filename, 'wb')
+        if not self._fp:
+            raise RuntimeError("Couldn't create file %s" % self.filename)
+
+        if self._lib.divert_init_pcap(self._fp, self._errmsg) != 0:
+            raise RuntimeError("Couldn't init file %s: %s" %
+                               (self.filename, self._errmsg.value))
+
+    def __del__(self):
+        if self._fp:
+            self.close()
+
+    def _load_libc(self):
+        self._libc = cdll.LoadLibrary('libc.dylib')
+        # set the types of parameters
+        for func_name, argtypes in self.libc_argtypes.items():
+            setattr(getattr(self._libc, func_name), "argtypes", argtypes)
+        # set the types of return value
+        for func_name, restype in self.libc_restypes.items():
+            setattr(getattr(self._libc, func_name), "restype", restype)
+
+    def write(self, packet):
+        if self._lib.divert_dump_pcap(packet.ip_data,
+                                      self._fp, self._errmsg) != 0:
+            raise RuntimeError("Couldn't write into %s: %s" %
+                               (self.filename, self._errmsg.value))
+
+    def close(self):
+        if self._fp:
+            if self._libc.fclose(self._fp) == 0:
+                self._fp = None
+            else:
+                raise RuntimeError("File %s could not be closed!" % self.filename)
+        else:
+            raise RuntimeError("File %s is not opened!" % self.filename)
 
 
 class Packet:
