@@ -1,6 +1,7 @@
 # encoding: utf8
 
 import os
+import libdivert as nids
 from copy import deepcopy
 from ctypes import cdll
 from enum import Defaults, Flags, Read_stats
@@ -31,6 +32,7 @@ class MacDivert:
         "divert_signal_handler_stop_loop": [c_int, c_void_p],
         "divert_init_pcap": [c_void_p, c_char_p],
         "divert_dump_pcap": [c_void_p, c_void_p, c_char_p],
+        "divert_find_tcp_stream": [c_char_p],
 
         # util functions
         "divert_dump_packet": [c_char_p, POINTER(PacketHeader), c_uint32, c_char_p],
@@ -59,6 +61,7 @@ class MacDivert:
         "divert_signal_handler_stop_loop": None,
         "divert_init_pcap": c_int,
         "divert_dump_pcap": c_int,
+        "divert_find_tcp_stream": c_void_p,
 
         "divert_dump_packet": c_char_p,
         "ipfw_compile_rule": c_int,
@@ -280,6 +283,13 @@ class DivertHandle:
         return self._lib.divert_set_signal_handler(
             signum, self._lib.divert_signal_handler_stop_loop, self._handle
         )
+
+    def find_tcp_stream(self, packet):
+        if self.eof:
+            raise RuntimeError("Divert socket is closed.")
+        stream_p = self._lib.divert_find_tcp_stream(packet.ip_data)
+        if stream_p:
+            return nids.convert(c_void_p(stream_p))
 
     # Context Manager protocol
     def __enter__(self):

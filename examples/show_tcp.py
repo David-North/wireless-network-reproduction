@@ -37,7 +37,7 @@ def tcp_callback(tcp):
 def work():
     divert_file = MacDivert()
     with DivertHandle(divert_file, 0, "ip from any to any via en0",
-                Flags.DIVERT_FLAG_TCP_REASSEM) as fid:
+                      Flags.DIVERT_FLAG_TCP_REASSEM) as fid:
         # register stop loop signal
         fid.set_stop_signal(SIGINT)
         # register TCP callback function
