@@ -2,7 +2,8 @@
 
 from socket import ntohs
 from ctypes import (c_uint, c_void_p, c_uint32, c_char_p, ARRAY, c_uint64, c_int32, c_uint16, c_int,
-                    c_uint8, c_ulong, c_char, Structure)
+                    c_uint8, c_ulong, c_char, c_ubyte, Structure)
+from enum import Defaults
 
 
 def format_structure(instance):
@@ -19,10 +20,19 @@ def format_structure(instance):
 
 
 class PacketHeader(Structure):
+    """
+    typedef struct {
+        struct ip *ip_hdr;
+        struct tcphdr *tcp_hdr;
+        struct udphdr *udp_hdr;
+        u_char *payload;
+        size_t size_ip;
+        size_t size_tcp;
+        size_t size_udp;
+        size_t size_payload;
+    } packet_hdrs_t;
+    """
     _fields_ = [
-        ("bhep_hdr", c_void_p),
-        ("pktap_hdr", c_void_p),
-        ("ether_hdr", c_void_p),
         ("ip_hdr", c_void_p),
         ("tcp_hdr", c_void_p),
         ("udp_hdr", c_void_p),
@@ -91,75 +101,48 @@ class ProcInfo(Structure):
         return format_structure(self)
 
 
-class PktapHeader(Structure):
+class DivertHandleRaw(Structure):
     """
-    Ctypes structure for apple PKTAP header definition.
-    struct pktap_header {
-        uint32_t		pth_length;
-        uint32_t		pth_type_next;
-        uint32_t		pth_dlt;
-        char			pth_ifname[PKTAP_IFXNAMESIZE];
-        uint32_t		pth_flags;
-        uint32_t		pth_protocol_family;
-        uint32_t		pth_frame_pre_length;
-        uint32_t		pth_frame_post_length;
-        pid_t			pth_pid;
-        char			pth_comm[MAXCOMLEN+1];
-        uint32_t		pth_svc;
-        uint16_t		pth_iftype;
-        uint16_t		pth_ifunit;
-        pid_t			pth_epid;
-        char			pth_ecomm[MAXCOMLEN+1];
-        uint32_t		pth_flowid;
-        uint32_t		pth_ipproto;
-        struct timeval32	pth_tstamp;
-        uuid_t			pth_uuid;
-        uuid_t			pth_euuid;
-    };
-    """
-    MAXCOMLEN = 16
-    PKTAP_IFXNAMESIZE = 24
-    _fields_ = [
-        ("pth_length", c_uint32),
-        ("pth_type_next", c_uint32),
-        ("pth_dlt", c_uint32),
-        ("pth_ifname", c_char * PKTAP_IFXNAMESIZE),
-        ("pth_flags", c_uint32),
-        ("pth_protocol_family", c_uint32),
-        ("pth_frame_pre_length", c_uint32),
-        ("pth_frame_post_length", c_uint32),
-        ("pth_pid", c_int32),
-        ("pth_comm", c_char * (MAXCOMLEN + 1)),
-        ("pth_svc", c_uint32),
-        ("pth_iftype", c_uint16),
-        ("pth_ifunit", c_uint16),
-        ("pth_epid", c_int32),
-        ("pth_ecomm", c_char * (MAXCOMLEN + 1)),
-        ("pth_flowid", c_uint32),
-        ("pth_ipproto", c_uint32),
-        ("pth_tstamp", c_int32 * 2),
-        ("pth_uuid", c_uint8 * 16),
-        ("pth_euuid", c_uint8 * 16),
-    ]
-
-    def __str__(self):
-        return format_structure(self)
-
-
-class PcapStat(Structure):
-    """
-    Structure returned by the pcap_stats()
-    See document of libpcap for details
-    struct pcap_stat {
-        u_int ps_recv;		/* number of packets received */
-        u_int ps_drop;		/* number of packets dropped */
-        u_int ps_ifdrop;	/* drops by interface -- only supported on some platforms */
-    };
+   typedef struct {
+        u_int32_t flags;
+        int divert_fd;
+        int kext_fd;
+        int ipfw_id;
+        int divert_port;
+        int pipe_fd[2];
+        int exit_fd[2];
+        u_char *divert_buffer;
+        size_t bufsize;
+        packet_buf_t *thread_buffer;
+        size_t thread_buffer_size;
+        u_int64_t num_unknown;
+        u_int64_t num_diverted;
+        divert_error_handler_t err_handler;
+        divert_callback_t callback;
+        void *callback_args;
+        volatile u_char is_looping;
+        char errmsg[DIVERT_ERRBUF_SIZE];
+    } divert_t;
     """
     _fields_ = [
-        ("ps_recv", c_uint),  # number of packets received
-        ("ps_drop", c_uint),  # number of packets dropped
-        ("ps_ifdrop", c_uint),  # drops by interface -- only supported on some platforms
+        ("flags", c_uint32),
+        ("divert_fd", c_int),
+        ("kext_fd", c_int),
+        ("ipfw_id", c_int),
+        ("divert_port", c_int),
+        ("pipe_fd", c_int * 2),
+        ("exit_fd", c_int * 2),
+        ("divert_buffer", c_char_p),
+        ("bufsize", c_ulong),
+        ("thread_buffer", c_void_p),
+        ("thread_buffer_size", c_ulong),
+        ("num_unknown", c_uint64),
+        ("num_diverted", c_uint64),
+        ("err_handler", c_void_p),
+        ("callback", c_void_p),
+        ("callback_args", c_void_p),
+        ("is_looping", c_ubyte),
+        ("errmsg", c_char * Defaults.DIVERT_ERRBUF_SIZE)
     ]
 
     def __str__(self):
