@@ -8,7 +8,6 @@ Usage:
 import os
 import sys
 import shutil
-
 dirname, filename = os.path.split(os.path.abspath(__file__))
 sys.path.append(os.path.join(dirname, 'tcptrace_gui'))
 from setuptools import setup
@@ -17,7 +16,8 @@ from subprocess import Popen, PIPE
 APP_NAME = 'NetworkProfiler'
 
 DATA_FILES = [
-    'tcptrace_gui/pytcptrace/tcptrace'
+    'tcptrace_gui/pytcptrace/tcptrace',
+    'macdivert/PacketPID.kext',
 ]
 
 OPTIONS = {
@@ -49,9 +49,28 @@ def cmake_build(src_dir):
     if os.path.exists(build_path):
         shutil.rmtree(build_path)
     os.mkdir(build_path)
-    call_cmd(['cmake', '-B' + build_path, '-H' + source_path])
+    call_cmd(['cmake', '-B' + build_path, '-H' + source_path,
+              '-DCMAKE_BUILD_TYPE=Release'])
     call_cmd(['make', '-C', build_path])
     return build_path
+
+
+def xcode_build(src_dir):
+    src_path = os.path.join(dirname, src_dir)
+    build_path = os.path.join(dirname, src_dir + '_xcode')
+    if os.path.exists(build_path):
+        shutil.rmtree(build_path)
+    os.mkdir(build_path)
+
+    kext_path = os.path.join(dirname, 'macdivert', 'PacketPID.kext')
+    if os.path.exists(kext_path):
+        shutil.rmtree(kext_path)
+
+    os.chdir(src_path)
+    call_cmd(['xcodebuild', '-configuration', 'Release',
+              'CONFIGURATION_BUILD_DIR=' + build_path])
+    shutil.copytree(os.path.join(build_path, 'PacketPID.kext'), kext_path)
+    os.chdir(dirname)
 
 
 def archive_dmg():
@@ -59,13 +78,20 @@ def archive_dmg():
               '-srcfolder', os.path.join('dist', APP_NAME + '.app')])
 
 
-# first compile the binaries and copy them
-shutil.copyfile(os.path.join(cmake_build('libdivert'), 'libdivert.so'),
-                os.path.join(dirname, 'macdivert', 'libdivert.so'))
+# first remove previous builds
+for name in ('dist', 'build'):
+    del_path = os.path.join(dirname, name)
+    if os.path.exists(del_path):
+        shutil.rmtree(del_path)
 
-shutil.copyfile(os.path.join(cmake_build('tcptrace'), 'tcptrace'),
-                os.path.join(dirname, 'tcptrace_gui', 'pytcptrace', 'tcptrace'))
-exit(0)
+# then compile the binaries and copy them
+shutil.copy(os.path.join(cmake_build('libdivert'), 'libdivert.so'),
+            os.path.join(dirname, 'macdivert', 'libdivert.so'))
+
+shutil.copy(os.path.join(cmake_build('tcptrace'), 'tcptrace'),
+            os.path.join(dirname, 'tcptrace_gui', 'pytcptrace', 'tcptrace'))
+
+xcode_build('PacketPID')
 
 setup(
     # Application name

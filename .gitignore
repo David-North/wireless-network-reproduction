@@ -5,3 +5,5 @@
 dist/
 build/
 *_cmake/
+*_xcode/
+*.kext/

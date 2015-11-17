@@ -7,3 +7,6 @@
 [submodule "tcptrace"]
 	path = tcptrace
 	url = ssh://g@gitlab.baidu.com:8022/huangyan13/tcptrace.git
+[submodule "PacketPID"]
+	path = PacketPID
+	url = ssh://g@gitlab.baidu.com:8022/huangyan13/PacketPID.git
