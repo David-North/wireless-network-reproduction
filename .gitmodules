@@ -1,0 +1,9 @@
+[submodule "tcptrace_gui"]
+	path = tcptrace_gui
+	url = ssh://g@gitlab.baidu.com:8022/huangyan13/pytcptrace.git
+[submodule "libdivert"]
+	path = libdivert
+	url = ssh://g@gitlab.baidu.com:8022/huangyan13/libdivert.git
+[submodule "tcptrace"]
+	path = tcptrace
+	url = ssh://g@gitlab.baidu.com:8022/huangyan13/tcptrace.git
