@@ -16,18 +16,19 @@ from subprocess import Popen, PIPE
 APP_NAME = 'NetworkProfiler'
 
 DATA_FILES = [
-    'tcptrace_gui/pytcptrace/tcptrace',
-    'macdivert/PacketPID.kext',
+    # no need to keep data files in setup.py
+    # all of them would be put in package folder
 ]
 
 OPTIONS = {
-    'argv_emulation': True,
+    'argv_emulation': False,
     'packages': ['pytcptrace', 'macdivert'],
     'iconfile': 'resource/icon.icns',
     'plist': {
         'CFBundleShortVersionString': '1.0.0',
         'CFBundleIconFile': 'icon.icns',
-    }
+    },
+    'extra_scripts': ['network_emulator.py']
 }
 
 
