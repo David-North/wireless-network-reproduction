@@ -4,6 +4,7 @@ import os
 import libdivert as nids
 from copy import deepcopy
 from ctypes import cdll
+from pwd import getpwuid
 from enum import Defaults, Flags, Read_stats
 from ctypes import POINTER, pointer, cast
 from ctypes import (c_uint, c_void_p, c_uint32, c_char_p, ARRAY, c_uint64, c_int16, c_int,
@@ -27,6 +28,7 @@ class MacDivert:
         "divert_close": [POINTER(DivertHandleRaw)],
         "divert_is_inbound": [c_char_p, c_void_p],
         "divert_is_outbound": [c_char_p],
+        "divert_set_callback": [c_void_p, c_void_p, c_void_p],
         "divert_set_signal_handler": [c_int, c_void_p, c_void_p],
         "divert_signal_handler_stop_loop": [c_int, c_void_p],
         "divert_init_pcap": [c_void_p],
@@ -34,6 +36,8 @@ class MacDivert:
         "divert_find_tcp_stream": [c_char_p],
 
         # util functions
+        "divert_load_kext": [c_char_p],
+        "divert_unload_kext": [],
         "divert_dump_packet": [c_char_p, POINTER(PacketHeader), c_uint32, c_char_p],
 
         # note that we use char[] to store the ipfw rule for convenience
@@ -55,21 +59,25 @@ class MacDivert:
         "divert_close": c_int,
         "divert_is_inbound": c_int,
         "divert_is_outbound": c_int,
+        "divert_set_callback": c_int,
         "divert_set_signal_handler": c_int,
         "divert_signal_handler_stop_loop": None,
         "divert_init_pcap": c_int,
         "divert_dump_pcap": c_int,
         "divert_find_tcp_stream": c_void_p,
 
+        "divert_load_kext": c_int,
+        "divert_unload_kext": c_int,
         "divert_dump_packet": c_char_p,
         "ipfw_compile_rule": c_int,
         "ipfw_print_rule": None,
     }
 
-    def __init__(self, lib_path='', encoding='utf-8'):
+    def __init__(self, lib_path='', kext_path='', encoding='utf-8'):
         """
         Constructs a new driver instance
         :param lib_path: The OS path where to load the libdivert.so
+        :param lib_path: The OS path where to load the kernel extension
         :param encoding: The character encoding to use (defaults to UTF-8)
         :return:
         """
@@ -78,9 +86,16 @@ class MacDivert:
             if not lib_path:
                 raise RuntimeError("Unable to find libdivert.so")
 
+        if not (kext_path and os.path.exists(kext_path) and os.path.isdir(kext_path)):
+            kext_path = self._find_kext()
+            if not kext_path:
+                raise RuntimeError("Unable to find PacketPID.kext")
+
         self.dll_path = lib_path
+        self.kext_path = kext_path
         self.encoding = encoding
         self._load_lib(lib_path)
+        self._load_kext(kext_path)
 
     @staticmethod
     def _find_lib():
@@ -111,6 +126,23 @@ class MacDivert:
         for func_name, restype in self.divert_restypes.items():
             setattr(getattr(self._lib, func_name), "restype", restype)
 
+    @staticmethod
+    def chown_recursive(path, uid, gid):
+        os.chown(path, uid, gid)
+        for root, dirs, files in os.walk(path):
+            for item in dirs:
+                os.chown(os.path.join(root, item), uid, gid)
+            for item in files:
+                os.chown(os.path.join(root, item), uid, gid)
+
+    def _load_kext(self, kext_path):
+        uid, gid = os.stat(kext_path).st_uid, os.stat(kext_path).st_gid
+        self.chown_recursive(kext_path, 0, 0)
+        ret_val = self._lib.divert_load_kext(kext_path)
+        self.chown_recursive(kext_path, uid, gid)
+        if ret_val != 0:
+            raise OSError("Could not load kernel extension for libdivert")
+
     def get_reference(self):
         """
         Return a reference to the internal dylib
@@ -131,7 +163,8 @@ class MacDivert:
 
 
 class DivertHandle:
-    def __init__(self, libdivert=None, port=0, filter_str="", flags=0, count=-1, encoding='utf-8'):
+    def __init__(self, libdivert=None, port=0, filter_str="",
+                 flags=0, count=-1, encoding='utf-8'):
         if not libdivert:
             # Try to construct by loading from the library path
             self._libdivert = MacDivert()
@@ -214,7 +247,7 @@ class DivertHandle:
             self.active = False
 
     def set_filter(self, filter_str):
-        if not self.eof and filter_str:
+        if filter_str:
             if self._lib.divert_update_ipfw(self._handle,
                                             filter_str) != 0:
                 raise RuntimeError("Error rule: %s" %

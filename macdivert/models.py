@@ -121,6 +121,7 @@ class DivertHandleRaw(Structure):
         divert_callback_t callback;
         void *callback_args;
         volatile u_char is_looping;
+        char *ipfw_filter;
         char errmsg[DIVERT_ERRBUF_SIZE];
     } divert_t;
     """
@@ -142,6 +143,7 @@ class DivertHandleRaw(Structure):
         ("callback", c_void_p),
         ("callback_args", c_void_p),
         ("is_looping", c_ubyte),
+        ("ipfw_filter", c_char_p),
         ("errmsg", c_char * Defaults.DIVERT_ERRBUF_SIZE)
     ]
 
