@@ -2,7 +2,7 @@
 
 from socket import ntohs
 from ctypes import (c_uint, c_void_p, c_uint32, c_char_p, ARRAY, c_uint64, c_int32, c_uint16, c_int,
-                    c_uint8, c_ulong, c_char, c_ubyte, Structure)
+                    c_uint8, c_ulong, c_char, c_ubyte, Structure, c_size_t, c_ssize_t)
 from enum import Defaults
 
 
@@ -134,9 +134,9 @@ class DivertHandleRaw(Structure):
         ("pipe_fd", c_int * 2),
         ("exit_fd", c_int * 2),
         ("divert_buffer", c_char_p),
-        ("bufsize", c_ulong),
+        ("bufsize", c_size_t),
         ("thread_buffer", c_void_p),
-        ("thread_buffer_size", c_ulong),
+        ("thread_buffer_size", c_size_t),
         ("num_unknown", c_uint64),
         ("num_diverted", c_uint64),
         ("err_handler", c_void_p),

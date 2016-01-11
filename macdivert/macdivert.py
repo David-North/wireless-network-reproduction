@@ -7,8 +7,8 @@ from ctypes import cdll
 from pwd import getpwuid
 from enum import Defaults, Flags, Read_stats
 from ctypes import POINTER, pointer, cast
-from ctypes import (c_uint, c_void_p, c_uint32, c_char_p, ARRAY, c_uint64, c_int16, c_int,
-                    create_string_buffer, c_uint8, c_ulong, c_long, c_longlong, c_ushort)
+from ctypes import (c_void_p, c_uint32, c_char_p, c_int,
+                    create_string_buffer, c_ushort, c_ssize_t)
 from models import ProcInfo, IpHeader, PacketHeader, DivertHandleRaw
 
 __author__ = 'huangyan13@baidu.com'
@@ -23,8 +23,9 @@ class MacDivert:
         "divert_loop": [POINTER(DivertHandleRaw), c_int],
         "divert_is_looping": [POINTER(DivertHandleRaw)],
         "divert_loop_stop": [POINTER(DivertHandleRaw)],
+        "divert_wait_loop_finish": [POINTER(DivertHandleRaw)],
         "divert_read": [POINTER(DivertHandleRaw), c_char_p, c_char_p, c_char_p],
-        "divert_reinject": [POINTER(DivertHandleRaw), c_char_p, c_int, c_char_p],
+        "divert_reinject": [POINTER(DivertHandleRaw), c_char_p, c_ssize_t, c_char_p],
         "divert_close": [POINTER(DivertHandleRaw)],
         "divert_is_inbound": [c_char_p, c_void_p],
         "divert_is_outbound": [c_char_p],
@@ -54,8 +55,9 @@ class MacDivert:
         "divert_loop": c_int,
         "divert_is_looping": c_int,
         "divert_loop_stop": None,
-        "divert_read": c_long,
-        "divert_reinject": c_long,
+        "divert_wait_loop_finish": None,
+        "divert_read": c_ssize_t,
+        "divert_reinject": c_ssize_t,
         "divert_close": c_int,
         "divert_is_inbound": c_int,
         "divert_is_outbound": c_int,
