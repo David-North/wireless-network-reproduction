@@ -1,13 +1,15 @@
 # encoding: utf8
 
 import os
-import time
+import json
+import psutil
 import signal
 import threading
 import Tkinter as tk
 from macdivert import MacDivert
-from enum import Defaults
 from tkMessageBox import showerror
+from enum import Defaults
+from tkFileDialog import askopenfilename, askdirectory
 from ctypes import POINTER, pointer, cast
 from ctypes import (c_uint8, c_void_p, c_int32, c_char_p, c_int,  c_float,
                     create_string_buffer, c_size_t, c_ssize_t, c_uint64)
@@ -51,7 +53,7 @@ class BasicPipe(object):
 
 
 class DelayPipe(BasicPipe):
-    def __init__(self, t, delay_time, size_filter_obj=None):
+    def __init__(self, t, delay_time, queue_size=Flags.DELAY_QUEUE_SIZE, size_filter_obj=None):
         super(DelayPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'delay_pipe_create'), "argtypes",
@@ -64,7 +66,40 @@ class DelayPipe(BasicPipe):
         self.handle = self._lib.delay_pipe_create(filter_handle, arr_len,
                                                   arr_type(*list(t)),
                                                   arr_type(*list(delay_time)),
-                                                  Flags.DELAY_QUEUE_SIZE)
+                                                  queue_size)
+
+
+class DropPipe(BasicPipe):
+    def __init__(self, t, drop_rate, size_filter_obj=None):
+        super(DropPipe, self).__init__()
+        # first set function signature
+        setattr(getattr(self._lib, 'drop_pipe_create'), "argtypes",
+                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float)])
+        setattr(getattr(self._lib, 'drop_pipe_create'), "restype", c_void_p)
+        arr_len = len(t)
+        arr_type = c_float * arr_len
+        # then check packet size filter handle
+        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.drop_pipe_create(filter_handle, arr_len,
+                                                 arr_type(*list(t)),
+                                                 arr_type(*list(drop_rate)))
+
+
+class BandwidthPipe(BasicPipe):
+    def __init__(self, t, bandwidth, queue_size=Flags.DELAY_QUEUE_SIZE, size_filter_obj=None):
+        super(BandwidthPipe, self).__init__()
+        # first set function signature
+        setattr(getattr(self._lib, 'bandwidth_pipe_create'), "argtypes",
+                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
+        setattr(getattr(self._lib, 'bandwidth_pipe_create'), "restype", c_void_p)
+        arr_len = len(t)
+        arr_type = c_float * arr_len
+        # then check packet size filter handle
+        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.bandwidth_pipe_create(filter_handle, arr_len,
+                                                      arr_type(*list(t)),
+                                                      arr_type(*list(bandwidth)),
+                                                      queue_size)
 
 
 class Emulator(object):
@@ -85,6 +120,7 @@ class Emulator(object):
         'emulator_set_pid_list': [c_void_p, POINTER(c_int32), c_ssize_t],
         'emulator_config_check': [c_void_p, c_char_p],
         'emulator_is_running': [c_void_p],
+        'emulator_data_size': [c_void_p, c_int]
     }
 
     emulator_restypes = {
@@ -102,18 +138,24 @@ class Emulator(object):
         'emulator_set_pid_list': None,
         'emulator_config_check': c_int,
         'emulator_is_running': c_int,
+        'emulator_data_size': c_uint64,
     }
 
     def __init__(self):
         # get reference for libdivert
-        lib_obj = MacDivert()
-        Emulator.libdivert_ref = lib_obj.get_reference()
-        # initialize prototype of functions
-        self._init_func_proto()
+        if Emulator.libdivert_ref is None:
+            lib_obj = MacDivert()
+            Emulator.libdivert_ref = lib_obj.get_reference()
+            # initialize prototype of functions
+            self._init_func_proto()
         # create divert handle and emulator config
         self.handle, self.config = self._create_config()
         # background thread for divert loop
         self.thread = None
+        # list to store pids
+        self.pid_list = []
+        # error information
+        self.errmsg = create_string_buffer(Defaults.DIVERT_ERRBUF_SIZE)
 
     def __del__(self):
         lib = self.libdivert_ref
@@ -149,17 +191,22 @@ class Emulator(object):
                                    lib.emulator_callback,
                                    config) != 0:
             raise RuntimeError(divert_handle.errmsg)
-        if lib.divert_set_signal_handler(signal.SIGINT,
-                                         lib.divert_signal_handler_stop_loop,
-                                         divert_handle) != 0:
-            raise RuntimeError(divert_handle.errmsg)
         # activate divert handle
         if lib.divert_activate(divert_handle) != 0:
             raise RuntimeError(divert_handle.errmsg)
         return divert_handle, config
 
-    def _divert_loop(self):
+    def _divert_loop(self, filter_str):
+        # first apply filter string
         lib = self.libdivert_ref
+        if filter_str:
+            if lib.divert_update_ipfw(self.handle, filter_str) != 0:
+                raise RuntimeError(self.handle.errmsg)
+        # then add all pids into list
+        self._wait_pid()
+        # finally check the config
+        if lib.emulator_config_check(self.config, self.errmsg) != 0:
+            raise RuntimeError('Invalid configuration: %s' % self.errmsg)
         lib.emulator_start(self.config)
         lib.divert_loop(self.handle, -1)
 
@@ -179,14 +226,36 @@ class Emulator(object):
         if lib.emulator_del_pipe(self.config, pipe.handle, int(free_mem)) != 0:
             raise RuntimeError("Pipe do not exists.")
 
-    def start(self, filter_str='ip from any to any via en0'):
-        # first apply filter string
+    def add_pid(self, pid):
+        self.pid_list.append(pid)
+
+    def _wait_pid(self):
+        # first wait until all processes are started
+        proc_list = filter(lambda x: isinstance(x, str) or isinstance(x, unicode), self.pid_list)
+        real_pid_list = filter(lambda x: isinstance(x, int), self.pid_list)
+        while True:
+            if len(real_pid_list) == len(self.pid_list):
+                break
+            for proc in psutil.process_iter():
+                proc_name = proc.name().lower()
+                for name in proc_list:
+                    if name.lower() in proc_name:
+                        real_pid_list.append(proc.pid)
+            time.sleep(0.2)
         lib = self.libdivert_ref
-        if filter_str:
-            if lib.divert_update_ipfw(self.handle, filter_str) != 0:
-                raise RuntimeError(self.handle.errmsg)
-        # then start a new thread to run emulator
-        self.thread = threading.Thread(target=self._divert_loop)
+        arr_len = len(real_pid_list)
+        arr_type = c_int32 * arr_len
+        lib.emulator_set_pid_list(self.config, arr_type(*real_pid_list), arr_len)
+
+    def set_dump(self, directory):
+        lib = self.libdivert_ref
+        if not os.path.isdir:
+            raise RuntimeError('Invalid save position.')
+        lib.emulator_set_dump_pcap(self.config, directory)
+
+    def start(self, filter_str=''):
+        # start a new thread to run emulator
+        self.thread = threading.Thread(target=self._divert_loop, args=(filter_str,))
         self.thread.start()
 
     def stop(self):
@@ -194,14 +263,15 @@ class Emulator(object):
         self.thread.join(timeout=1.0)
         if self.thread.isAlive():
             raise RuntimeError('Divert loop failed to stop.')
+        self.thread = None
 
+    @property
+    def is_looping(self):
+        return self.thread is not None
 
-class BasicPipeWidget(object):
-    pass
-
-
-class DelayPipeWidget(object):
-    pass
+    def data_size(self, direction):
+        lib = self.libdivert_ref
+        return lib.emulator_data_size(self.config, direction)
 
 
 class EmulatorGUI(object):
@@ -237,17 +307,19 @@ class EmulatorGUI(object):
 
         self.inbound_list = []
         self.outbound_list = []
-        self.filter_str = tk.StringVar()
+        self.filter_str = tk.StringVar(value='ip from any to any via en0')
+        self.proc_str = tk.StringVar(value='PID / comma separated process name')
         self.data_file = tk.StringVar()
+        self.dump_pos = tk.StringVar()
+        self.start_btn = None
 
-        self.init_filter()
+        self.conf = None
+        self.emulator = None
+
+        self.init_GUI()
 
         try:
             self.emulator = Emulator()
-        except RuntimeError as e:
-            self.master.withdraw()
-            showerror('libdivert loading error', e.message)
-            self.master.destroy()
         except OSError:
             def close_func():
                 self.master.quit()
@@ -261,30 +333,175 @@ class EmulatorGUI(object):
             top.protocol("WM_DELETE_WINDOW", close_func)
         except Exception as e:
             self.master.withdraw()
-            showerror('Emulator Starting Error', e.message)
+            showerror('Emulator Loading Error', e.message)
             self.master.destroy()
 
-    def init_filter(self):
+    def init_GUI(self):
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='Filter Expression').pack(side=tk.LEFT)
-        tk.Entry(master=new_frame, textvariable=self.filter_str) \
+        tk.Label(master=new_frame, text='File:').pack(side=tk.LEFT)
+        tk.Entry(master=new_frame, textvariable=self.data_file)\
+            .pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tk.Button(master=new_frame, text='Select',
+                  command=self.load_data_file).pack(side=tk.LEFT)
+        new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+        new_frame = tk.Frame(master=self.master)
+        tk.Label(master=new_frame, text='Dump to:').pack(side=tk.LEFT)
+        tk.Entry(master=new_frame, textvariable=self.dump_pos)\
+            .pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tk.Button(master=new_frame, text='Select',
+                  command=self.load_dump_pos).pack(side=tk.LEFT)
+        new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+        new_frame = tk.Frame(master=self.master)
+        tk.Label(master=new_frame, text='Filter Expr').pack(side=tk.LEFT)
+        tk.Entry(master=new_frame, textvariable=self.filter_str, font='Monaco') \
             .pack(side=tk.LEFT, fill=tk.X, expand=True)
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
-    def load_conf(self):
-        # do two things here:
-        # 1. use raw API to set emulator configuration
-        # 2. update all widgets
-        pass
+        new_frame = tk.Frame(master=self.master)
+        tk.Label(master=new_frame, text='Proc List').pack(side=tk.LEFT)
+        tk.Entry(master=new_frame, textvariable=self.proc_str,
+                 font='Monaco', width=len(self.proc_str.get()))\
+            .pack(side=tk.LEFT, fill=tk.X, expand=True)
+        new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+        new_frame = tk.Frame(master=self.master)
+        self.start_btn = tk.Button(master=new_frame, text='Start',
+                                   command=self.start, font=('Monaco', 20))
+        self.start_btn.pack(side=tk.TOP)
+        new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+    def load_data_file(self):
+        dir_name, file_name = os.path.split(__file__)
+        dir_name = os.path.join(dir_name, 'examples')
+        file_path = askopenfilename(title='Choose .json file', initialdir=dir_name)
+        if file_path and os.path.isfile(file_path):
+            try:
+                self.data_file.set(file_path)
+                with open(self.data_file.get(), 'r') as fid:
+                    data = fid.read()
+                    self.conf = json.loads(data)
+            except Exception as e:
+                showerror(title='Open file',
+                          message='Unable to load data: %s' % e.message)
+
+    def load_dump_pos(self):
+        dir_name, file_name = os.path.split(__file__)
+        dir_name = os.path.join(dir_name, 'examples')
+        dir_path = askdirectory(title='Choose dump position',
+                                initialdir=dir_name)
+        self.dump_pos.set(dir_path)
+
+    def start(self):
+        if self.emulator is None:
+            try:
+                self.start_btn.config(text='Stop')
+                self.start_btn.config(status=tk.DISABLED)
+                self.emulator = Emulator()
+                self._load_config()
+                self.emulator.start(self.filter_str.get())
+                self.start_btn.config(status=tk.NORMAL)
+            except Exception as e:
+                showerror(title='Runtime error',
+                          message='Unable to start emulator: %s' % e.message)
+        else:
+            try:
+                self.start_btn.config(text='Start')
+                self.start_btn.config(status=tk.DISABLED)
+                self.emulator.stop()
+                self.emulator = None
+                self.start_btn.config(status=tk.NORMAL)
+            except Exception as e:
+                showerror(title='Runtime error',
+                          message='Unable to stop emulator: %s' % e.message)
+
+    def _load_config(self):
+        if self.emulator is None:
+            return
+        # set dump position
+        dump_path = self.dump_pos.get()
+        if dump_path and os.path.isdir(dump_path):
+            self.emulator.set_dump(dump_path)
+        # set pid list if not empty
+        if self.proc_str.get().strip():
+            self.emulator.add_pid(-1)
+            for pid in map(lambda x: x.strip(), self.proc_str.get().split(',')):
+                self.emulator.add_pid(pid)
+        # finally load all pipes
 
     def mainloop(self):
         self.master.mainloop()
 
 
 if __name__ == '__main__':
+    import sys
+    import time
+    import signal
+
+    pid_num = 0
+
+    try:
+        pid_num = int(sys.argv[1])
+    except Exception as e:
+        print 'Exception: %s' % e.message
+        print 'Usage: python emulator.py <PID>'
+        exit(-1)
+
     emulator = Emulator()
-    emulator.add_pipe(DelayPipe([0, 5], [0.3, 0.6]))
-    emulator.start()
-    time.sleep(10)
+    emulator.add_pid(pid_num)
+    emulator.add_pid(-1)
+    emulator.set_dump('/Users/baidu/Downloads')
+
+    # 2G
+    # emulator.add_pipe(DelayPipe([0, 10], [0.6, 0.6], 1024), Flags.DIRECTION_IN)
+    # emulator.add_pipe(DelayPipe([0, 10], [0.6, 0.6], 1024), Flags.DIRECTION_OUT)
+    # emulator.add_pipe(BandwidthPipe([0, 10], [5, 5], 1024), Flags.DIRECTION_IN)
+
+    # 2.5G
+    # emulator.add_pipe(DelayPipe([0, 10], [0.3, 0.3], 1024), Flags.DIRECTION_IN)
+    # emulator.add_pipe(DelayPipe([0, 10], [0.3, 0.3], 1024), Flags.DIRECTION_OUT)
+    # emulator.add_pipe(BandwidthPipe([0, 10], [10, 10], 1024), Flags.DIRECTION_IN)
+
+    # 2.75G
+    emulator.add_pipe(DelayPipe([0, 10], [0.1, 0.1], 1024), Flags.DIRECTION_IN)
+    emulator.add_pipe(DelayPipe([0, 10], [0.2, 0.2], 1024), Flags.DIRECTION_OUT)
+    emulator.add_pipe(BandwidthPipe([0, 10], [30, 30], 1024), Flags.DIRECTION_IN)
+
+    # 3G
+    # emulator.add_pipe(DelayPipe([0, 10], [0.05, 0.05], 1024), Flags.DIRECTION_IN)
+    # emulator.add_pipe(DelayPipe([0, 10], [0.05, 0.05], 1024), Flags.DIRECTION_OUT)
+    # emulator.add_pipe(BandwidthPipe([0, 10], [125, 125], 1024), Flags.DIRECTION_IN)
+
+    # 4G
+    # emulator.add_pipe(DelayPipe([0, 10], [0.015, 0.015], 1024), Flags.DIRECTION_IN)
+    # emulator.add_pipe(DelayPipe([0, 10], [0.015, 0.015], 1024), Flags.DIRECTION_OUT)
+    # emulator.add_pipe(BandwidthPipe([0, 10], [500, 500], 1024), Flags.DIRECTION_IN)
+
+    is_looping = True
+
+    # register signal handler
+    def sig_handler(signum, frame):
+        print 'Catch signal: %d' % signum
+        global is_looping
+        is_looping = False
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTSTP, sig_handler)
+
+    perMB = 1024 * 1024
+
+    trans_size = 0
+    # start loop
+    emulator.start('ip from any to any via en0')
+    while is_looping:
+        data_size = emulator.data_size(Flags.DIRECTION_IN)
+        if data_size > 5 * perMB:
+            print 'Finish'
+            break
+        if data_size > (trans_size + 1) * perMB:
+            trans_size = data_size / perMB
+            print 'Transfer %d MB data.' % trans_size
+        time.sleep(0.5)
+    # stop loop
     emulator.stop()
     print 'Program exited.'

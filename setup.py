@@ -6,19 +6,27 @@ Usage:
 """
 
 import os
+import re
 import sys
+import glob
 import shutil
+
+import PIL
+
 dirname, filename = os.path.split(os.path.abspath(__file__))
 sys.path.append(os.path.join(dirname, 'tcptrace_gui'))
 from setuptools import setup
 from subprocess import Popen, PIPE
 
+PAT = re.compile(r'python\d+\.\d+')
+
+PIL_path, init_file = os.path.split(PIL.__file__)
+
+PYTHON_VERSION = PAT.search(PIL_path).group()
+
 APP_NAME = 'NetworkProfiler'
 
-DATA_FILES = [
-    # no need to keep data files in setup.py
-    # all of them would be put in package folder
-]
+DATA_FILES = glob.glob(os.path.join(PIL_path, '.dylibs/*'))
 
 OPTIONS = {
     'argv_emulation': False,
@@ -28,7 +36,9 @@ OPTIONS = {
         'CFBundleShortVersionString': '1.0.0',
         'CFBundleIconFile': 'icon.icns',
     },
-    'extra_scripts': ['network_emulator.py']
+    'extra_scripts': ['network_emulator.py'],
+    'resources': [('lib/%s/lib-dynload/PIL/.dylibs/'
+                   % PYTHON_VERSION, DATA_FILES), ]
 }
 
 
