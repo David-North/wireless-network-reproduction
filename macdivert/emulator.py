@@ -2,6 +2,8 @@
 
 import os
 import json
+import time
+import copy
 import psutil
 import signal
 import threading
@@ -13,6 +15,9 @@ from tkFileDialog import askopenfilename, askdirectory
 from ctypes import POINTER, pointer, cast
 from ctypes import (c_uint8, c_void_p, c_int32, c_char_p, c_int,  c_float,
                     create_string_buffer, c_size_t, c_ssize_t, c_uint64)
+
+# import pydevd
+# pydevd.settrace('localhost', port=9999, stdoutToServer=True, stderrToServer=True)
 
 __author__ = 'huangyan13@baidu.com'
 
@@ -120,7 +125,8 @@ class Emulator(object):
         'emulator_set_pid_list': [c_void_p, POINTER(c_int32), c_ssize_t],
         'emulator_config_check': [c_void_p, c_char_p],
         'emulator_is_running': [c_void_p],
-        'emulator_data_size': [c_void_p, c_int]
+        'emulator_data_size': [c_void_p, c_int],
+        'emulator_create_size_filter': [c_size_t, POINTER(c_size_t), POINTER(c_float)],
     }
 
     emulator_restypes = {
@@ -139,7 +145,18 @@ class Emulator(object):
         'emulator_config_check': c_int,
         'emulator_is_running': c_int,
         'emulator_data_size': c_uint64,
+        'emulator_create_size_filter': c_void_p,
     }
+
+    class PacketSizeFilter(object):
+        def __init__(self, size_arr, rate_arr):
+            if len(size_arr) != len(rate_arr):
+                raise RuntimeError('Invalid packet size filter')
+            arr_len = len(size_arr)
+            lib = Emulator.libdivert_ref
+            self.handle = lib.emulator_create_size_filter(len(size_arr),
+                                                          (c_size_t * arr_len)(*size_arr),
+                                                          (c_float * arr_len)(*rate_arr))
 
     def __init__(self):
         # get reference for libdivert
@@ -275,6 +292,8 @@ class Emulator(object):
 
 
 class EmulatorGUI(object):
+    prompt_str = 'PID / comma separated process name'
+
     kext_errmsg = """
     Kernel extension load failed.
     Please check if you have root privilege on your Mac.
@@ -292,11 +311,22 @@ class EmulatorGUI(object):
     2. Reboot.
     """
 
+    def exit_func(self):
+        if self.emulator is not None:
+            try:
+                self.emulator.stop()
+                self.emulator = None
+            except Exception as e:
+                print e.message
+        self.master.quit()
+        self.master.destroy()
+
     def __init__(self, master):
         self.master = master
+        self.emulator = None
+        self.conf = None
         master.title("Network Emulator")
-        master.protocol("WM_DELETE_WINDOW",
-                        lambda: (master.quit(), master.destroy()))
+        master.protocol("WM_DELETE_WINDOW", self.exit_func)
 
         # first check root privilege
         if os.getuid() != 0:
@@ -308,18 +338,15 @@ class EmulatorGUI(object):
         self.inbound_list = []
         self.outbound_list = []
         self.filter_str = tk.StringVar(value='ip from any to any via en0')
-        self.proc_str = tk.StringVar(value='PID / comma separated process name')
+        self.proc_str = tk.StringVar(value=self.prompt_str)
         self.data_file = tk.StringVar()
         self.dump_pos = tk.StringVar()
+
         self.start_btn = None
-
-        self.conf = None
-        self.emulator = None
-
         self.init_GUI()
 
         try:
-            self.emulator = Emulator()
+            Emulator()
         except OSError:
             def close_func():
                 self.master.quit()
@@ -338,7 +365,7 @@ class EmulatorGUI(object):
 
     def init_GUI(self):
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='File:').pack(side=tk.LEFT)
+        tk.Label(master=new_frame, text='Configuration:').pack(side=tk.LEFT)
         tk.Entry(master=new_frame, textvariable=self.data_file)\
             .pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tk.Button(master=new_frame, text='Select',
@@ -346,7 +373,7 @@ class EmulatorGUI(object):
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='Dump to:').pack(side=tk.LEFT)
+        tk.Label(master=new_frame, text='Dump .pcap to:').pack(side=tk.LEFT)
         tk.Entry(master=new_frame, textvariable=self.dump_pos)\
             .pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tk.Button(master=new_frame, text='Select',
@@ -384,7 +411,8 @@ class EmulatorGUI(object):
                     self.conf = json.loads(data)
             except Exception as e:
                 showerror(title='Open file',
-                          message='Unable to load data: %s' % e.message)
+                          message='Unable to load json: %s' % e.message)
+                self.conf = None
 
     def load_dump_pos(self):
         dir_name, file_name = os.path.split(__file__)
@@ -394,27 +422,35 @@ class EmulatorGUI(object):
         self.dump_pos.set(dir_path)
 
     def start(self):
+        if not self.conf:
+            showerror(title='Configuration Error',
+                      message='No available conf file.')
+            return
         if self.emulator is None:
             try:
                 self.start_btn.config(text='Stop')
-                self.start_btn.config(status=tk.DISABLED)
+                self.start_btn.config(state=tk.DISABLED)
                 self.emulator = Emulator()
                 self._load_config()
                 self.emulator.start(self.filter_str.get())
-                self.start_btn.config(status=tk.NORMAL)
+                self.start_btn.config(state=tk.NORMAL)
             except Exception as e:
                 showerror(title='Runtime error',
                           message='Unable to start emulator: %s' % e.message)
+                self.start_btn.config(state=tk.NORMAL)
+                return
         else:
             try:
                 self.start_btn.config(text='Start')
-                self.start_btn.config(status=tk.DISABLED)
+                self.start_btn.config(state=tk.DISABLED)
                 self.emulator.stop()
                 self.emulator = None
-                self.start_btn.config(status=tk.NORMAL)
+                self.start_btn.config(state=tk.NORMAL)
             except Exception as e:
                 showerror(title='Runtime error',
                           message='Unable to stop emulator: %s' % e.message)
+                self.start_btn.config(state=tk.NORMAL)
+                return
 
     def _load_config(self):
         if self.emulator is None:
@@ -424,11 +460,49 @@ class EmulatorGUI(object):
         if dump_path and os.path.isdir(dump_path):
             self.emulator.set_dump(dump_path)
         # set pid list if not empty
-        if self.proc_str.get().strip():
+        pid_str = self.proc_str.get().strip()
+        if pid_str and pid_str != self.prompt_str:
             self.emulator.add_pid(-1)
-            for pid in map(lambda x: x.strip(), self.proc_str.get().split(',')):
+            for pid in map(lambda x: x.strip(), pid_str.split(',')):
                 self.emulator.add_pid(pid)
         # finally load all pipes
+        for pipe in copy.deepcopy(self.conf):
+            if not isinstance(pipe, dict):
+                raise TypeError('Invalid configuration')
+            pipe_name = pipe.pop('pipe', None)
+            if not pipe_name:
+                raise RuntimeError('Configuration do not have pipe type')
+            direction = pipe.pop('direction', None)
+            if not direction:
+                raise RuntimeError('Configuration do not have direction field')
+            dir_flag = Flags.DIRECTION_OUT if direction == "out" else Flags.DIRECTION_IN
+            size_filter = self._create_filter(pipe.pop('filter', None))
+            if pipe_name == 'delay':
+                pipe_obj = DelayPipe(size_filter_obj=size_filter, **pipe)
+            elif pipe_name == 'drop':
+                pipe_obj = DropPipe(size_filter_obj=size_filter, **pipe)
+            elif pipe_name == 'disorder':
+                pass
+            elif pipe_name == 'throttle':
+                pass
+            elif pipe_name == 'bandwidth':
+                pipe_obj = BandwidthPipe(size_filter_obj=size_filter, **pipe)
+            elif pipe_name == 'duplicate':
+                pass
+            elif pipe_name == 'tamper':
+                pass
+            else:
+                raise RuntimeError('Invalid pipe type')
+            self.emulator.add_pipe(pipe_obj, dir_flag)
+
+    def _create_filter(self, filter_dict):
+        if not filter_dict:
+            return None
+        size_arr = filter_dict.get('size')
+        rate_arr = filter_dict.get('rate')
+        if not size_arr or not rate_arr:
+            return None
+        return Emulator.PacketSizeFilter(size_arr, rate_arr)
 
     def mainloop(self):
         self.master.mainloop()
@@ -464,9 +538,9 @@ if __name__ == '__main__':
     # emulator.add_pipe(BandwidthPipe([0, 10], [10, 10], 1024), Flags.DIRECTION_IN)
 
     # 2.75G
-    emulator.add_pipe(DelayPipe([0, 10], [0.1, 0.1], 1024), Flags.DIRECTION_IN)
-    emulator.add_pipe(DelayPipe([0, 10], [0.2, 0.2], 1024), Flags.DIRECTION_OUT)
-    emulator.add_pipe(BandwidthPipe([0, 10], [30, 30], 1024), Flags.DIRECTION_IN)
+    emulator.add_pipe(DelayPipe([0, 10], [0.1, 0.6], 1024), Flags.DIRECTION_IN)
+    # emulator.add_pipe(DelayPipe([0, 10], [0.2, 0.2], 1024), Flags.DIRECTION_OUT)
+    # emulator.add_pipe(BandwidthPipe([0, 10], [30, 30], 1024), Flags.DIRECTION_IN)
 
     # 3G
     # emulator.add_pipe(DelayPipe([0, 10], [0.05, 0.05], 1024), Flags.DIRECTION_IN)
