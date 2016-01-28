@@ -107,6 +107,73 @@ class BandwidthPipe(BasicPipe):
                                                       queue_size)
 
 
+class BiterrPipe(BasicPipe):
+    def __init__(self, t, biterr_rate, max_flip, size_filter_obj=None):
+        super(BiterrPipe, self).__init__()
+        # first set function signature
+        setattr(getattr(self._lib, 'biterr_pipe_create'), "argtypes",
+                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_int])
+        setattr(getattr(self._lib, 'biterr_pipe_create'), "restype", c_void_p)
+        arr_len = len(t)
+        arr_type = c_float * arr_len
+        # then check packet size filter handle
+        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.biterr_pipe_create(filter_handle, arr_len,
+                                                   arr_type(*list(t)),
+                                                   arr_type(*list(biterr_rate)), max_flip)
+
+
+class DisorderPipe(BasicPipe):
+    def __init__(self, t, disorder_rate, queue_size, max_disorder, size_filter_obj=None):
+        super(DisorderPipe, self).__init__()
+        # first set function signature
+        setattr(getattr(self._lib, 'disorder_pipe_create'), "argtypes",
+                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t, c_int])
+        setattr(getattr(self._lib, 'disorder_pipe_create'), "restype", c_void_p)
+        arr_len = len(t)
+        arr_type = c_float * arr_len
+        # then check packet size filter handle
+        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.disorder_pipe_create(filter_handle, arr_len,
+                                                     arr_type(*list(t)),
+                                                     arr_type(*list(disorder_rate)),
+                                                     queue_size, max_disorder)
+
+
+class DuplicatePipe(BasicPipe):
+    def __init__(self, t, duplicate_rate, max_duplicate, size_filter_obj=None):
+        super(DuplicatePipe, self).__init__()
+        # first set function signature
+        setattr(getattr(self._lib, 'duplicate_pipe_create'), "argtypes",
+                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
+        setattr(getattr(self._lib, 'duplicate_pipe_create'), "restype", c_void_p)
+        arr_len = len(t)
+        arr_type = c_float * arr_len
+        # then check packet size filter handle
+        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.duplicate_pipe_create(filter_handle, arr_len,
+                                                      arr_type(*list(t)),
+                                                      arr_type(*list(duplicate_rate)),
+                                                      max_duplicate)
+
+
+class ThrottlePipe(BasicPipe):
+    def __init__(self, t_start, t_end, queue_size, size_filter_obj=None):
+        super(ThrottlePipe, self).__init__()
+        # first set function signature
+        setattr(getattr(self._lib, 'throttle_pipe_create'), "argtypes",
+                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
+        setattr(getattr(self._lib, 'throttle_pipe_create'), "restype", c_void_p)
+        arr_len = len(t_start)
+        arr_type = c_float * arr_len
+        # then check packet size filter handle
+        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.throttle_pipe_create(filter_handle, arr_len,
+                                                     arr_type(*list(t_start)),
+                                                     arr_type(*list(t_end)),
+                                                     queue_size)
+
+
 class Emulator(object):
     libdivert_ref = None
 
@@ -311,6 +378,16 @@ class EmulatorGUI(object):
     2. Reboot.
     """
 
+    pipe_name2type = {
+        'drop': DropPipe,
+        'delay': DelayPipe,
+        'biterr': BiterrPipe,
+        'disorder': DisorderPipe,
+        'throttle': ThrottlePipe,
+        'duplicate': DuplicatePipe,
+        'bandwidth': BandwidthPipe,
+    }
+
     def exit_func(self):
         if self.emulator is not None:
             try:
@@ -464,7 +541,11 @@ class EmulatorGUI(object):
         if pid_str and pid_str != self.prompt_str:
             self.emulator.add_pid(-1)
             for pid in map(lambda x: x.strip(), pid_str.split(',')):
-                self.emulator.add_pid(pid)
+                try:
+                    pid_int = int(pid)
+                    self.emulator.add_pid(pid_int)
+                except:
+                    self.emulator.add_pid(pid)
         # finally load all pipes
         for pipe in copy.deepcopy(self.conf):
             if not isinstance(pipe, dict):
@@ -477,22 +558,11 @@ class EmulatorGUI(object):
                 raise RuntimeError('Configuration do not have direction field')
             dir_flag = Flags.DIRECTION_OUT if direction == "out" else Flags.DIRECTION_IN
             size_filter = self._create_filter(pipe.pop('filter', None))
-            if pipe_name == 'delay':
-                pipe_obj = DelayPipe(size_filter_obj=size_filter, **pipe)
-            elif pipe_name == 'drop':
-                pipe_obj = DropPipe(size_filter_obj=size_filter, **pipe)
-            elif pipe_name == 'disorder':
-                pass
-            elif pipe_name == 'throttle':
-                pass
-            elif pipe_name == 'bandwidth':
-                pipe_obj = BandwidthPipe(size_filter_obj=size_filter, **pipe)
-            elif pipe_name == 'duplicate':
-                pass
-            elif pipe_name == 'tamper':
-                pass
-            else:
+            try:
+                pipe_type = self.pipe_name2type[pipe_name.lower()]
+            except:
                 raise RuntimeError('Invalid pipe type')
+            pipe_obj = pipe_type(size_filter_obj=size_filter, **pipe)
             self.emulator.add_pipe(pipe_obj, dir_flag)
 
     def _create_filter(self, filter_dict):

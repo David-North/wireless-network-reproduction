@@ -1,0 +1,13 @@
+[
+  {
+    "pipe": "bandwidth",
+    "direction": "in",
+    "filter": {
+      "size": [],
+      "rate": []
+    },
+    "t": [0, 100],
+    "bandwidth": [512, 512],
+    "queue_size": 4096
+  }
+]
