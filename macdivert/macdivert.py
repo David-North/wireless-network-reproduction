@@ -23,7 +23,7 @@ class MacDivert:
         "divert_loop": [POINTER(DivertHandleRaw), c_int],
         "divert_is_looping": [POINTER(DivertHandleRaw)],
         "divert_loop_stop": [POINTER(DivertHandleRaw)],
-        "divert_wait_loop_finish": [POINTER(DivertHandleRaw)],
+        "divert_loop_join": [POINTER(DivertHandleRaw)],
         "divert_read": [POINTER(DivertHandleRaw), c_char_p, c_char_p, c_char_p],
         "divert_reinject": [POINTER(DivertHandleRaw), c_char_p, c_ssize_t, c_char_p],
         "divert_close": [POINTER(DivertHandleRaw)],
@@ -35,6 +35,7 @@ class MacDivert:
         "divert_init_pcap": [c_void_p],
         "divert_dump_pcap": [c_void_p, c_void_p],
         "divert_find_tcp_stream": [c_char_p],
+        "divert_set_device": [c_void_p, c_char_p],
 
         # util functions
         "divert_load_kext": [c_char_p],
@@ -46,6 +47,7 @@ class MacDivert:
         # so this would work
         "ipfw_compile_rule": [c_char_p, c_ushort, c_ushort, c_char_p, c_char_p],
         "ipfw_print_rule": [c_char_p],
+        "ipfw_flush": [c_char_p],
     }
 
     divert_restypes = {
@@ -55,7 +57,7 @@ class MacDivert:
         "divert_loop": c_int,
         "divert_is_looping": c_int,
         "divert_loop_stop": None,
-        "divert_wait_loop_finish": None,
+        "divert_loop_join": None,
         "divert_read": c_ssize_t,
         "divert_reinject": c_ssize_t,
         "divert_close": c_int,
@@ -67,12 +69,14 @@ class MacDivert:
         "divert_init_pcap": c_int,
         "divert_dump_pcap": c_int,
         "divert_find_tcp_stream": c_void_p,
+        "divert_set_device": c_int,
 
         "divert_load_kext": c_int,
         "divert_unload_kext": c_int,
         "divert_dump_packet": c_char_p,
         "ipfw_compile_rule": c_int,
         "ipfw_print_rule": None,
+        "ipfw_flush": c_int,
     }
 
     def __init__(self, lib_path='', kext_path='', encoding='utf-8'):

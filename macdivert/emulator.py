@@ -297,7 +297,7 @@ class Emulator(object):
     def _divert_loop_stop(self):
         lib = self.libdivert_ref
         lib.divert_loop_stop(self.handle)
-        lib.divert_wait_loop_finish(self.handle)
+        lib.divert_loop_join(self.handle)
         lib.emulator_stop(self.config)
 
     def add_pipe(self, pipe, direction=Flags.DIRECTION_IN):
@@ -312,6 +312,11 @@ class Emulator(object):
 
     def add_pid(self, pid):
         self.pid_list.append(pid)
+
+    def set_device(self, dev_name):
+        lib = self.libdivert_ref
+        if lib.divert_set_device(self.handle, dev_name) != 0:
+            raise RuntimeError('Could not set capture device.')
 
     def _wait_pid(self):
         # first wait until all processes are started
@@ -361,6 +366,10 @@ class Emulator(object):
 class EmulatorGUI(object):
     prompt_str = 'PID / comma separated process name'
 
+    default_device = 'bridge100'
+
+    default_rule = 'ip from any to any via en0'
+
     kext_errmsg = """
     Kernel extension load failed.
     Please check if you have root privilege on your Mac.
@@ -389,6 +398,7 @@ class EmulatorGUI(object):
     }
 
     def exit_func(self):
+        self._flush_ipfw()
         if self.emulator is not None:
             try:
                 self.emulator.stop()
@@ -397,6 +407,12 @@ class EmulatorGUI(object):
                 print e.message
         self.master.quit()
         self.master.destroy()
+
+    def _flush_ipfw(self):
+        if Emulator.libdivert_ref is not None:
+            buf = create_string_buffer(256)
+            lib = Emulator.libdivert_ref
+            lib.ipfw_flush(buf)
 
     def __init__(self, master):
         self.master = master
@@ -414,12 +430,17 @@ class EmulatorGUI(object):
 
         self.inbound_list = []
         self.outbound_list = []
-        self.filter_str = tk.StringVar(value='ip from any to any via en0')
+        self.filter_str = tk.StringVar(value=self.default_rule)
         self.proc_str = tk.StringVar(value=self.prompt_str)
         self.data_file = tk.StringVar()
+        self.dev_str = tk.StringVar()
         self.dump_pos = tk.StringVar()
 
         self.start_btn = None
+        self.filter_entry = None
+        self.proc_entry = None
+        self.dev_entry = None
+        self.mode = tk.IntVar()
         self.init_GUI()
 
         try:
@@ -459,15 +480,28 @@ class EmulatorGUI(object):
 
         new_frame = tk.Frame(master=self.master)
         tk.Label(master=new_frame, text='Filter Expr').pack(side=tk.LEFT)
-        tk.Entry(master=new_frame, textvariable=self.filter_str, font='Monaco') \
-            .pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.filter_entry = tk.Entry(master=new_frame, textvariable=self.filter_str, font='Monaco')
+        self.filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
         tk.Label(master=new_frame, text='Proc List').pack(side=tk.LEFT)
-        tk.Entry(master=new_frame, textvariable=self.proc_str,
-                 font='Monaco', width=len(self.proc_str.get()))\
-            .pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.proc_entry = tk.Entry(master=new_frame, textvariable=self.proc_str,
+                                   font='Monaco', width=len(self.proc_str.get()))
+        self.proc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+        new_frame = tk.Frame(master=self.master)
+        tk.Label(master=new_frame, text='Mode').pack(side=tk.LEFT)
+        tk.Radiobutton(master=new_frame, text="Local", variable=self.mode,
+                       value=0, command=self._switch_mode).pack(side=tk.LEFT)
+        tk.Radiobutton(master=new_frame, text="WiFi", variable=self.mode,
+                       value=1, command=self._switch_mode).pack(side=tk.LEFT)
+        self.dev_entry = tk.Entry(master=new_frame, textvariable=self.dev_str,
+                                  state=tk.DISABLED, font='Monaco', width=12)
+        self.dev_entry.pack(side=tk.LEFT)
+        tk.Button(master=new_frame, text='Fix network',
+                  command=self._flush_ipfw).pack(side=tk.LEFT)
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
@@ -475,6 +509,23 @@ class EmulatorGUI(object):
                                    command=self.start, font=('Monaco', 20))
         self.start_btn.pack(side=tk.TOP)
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
+
+    def _switch_mode(self):
+        if self.mode.get() == 0:
+            # local mode
+            self.dev_str.set('')
+            self.dev_entry.config(state=tk.DISABLED)
+            self.filter_entry.config(state=tk.NORMAL)
+            self.proc_entry.config(state=tk.NORMAL)
+            self.filter_str.set(self.default_rule)
+            self.proc_str.set(self.prompt_str)
+        else:
+            self.dev_entry.config(state=tk.NORMAL)
+            self.dev_str.set(self.default_device)
+            self.filter_str.set('ip from any to any')
+            self.proc_str.set('')
+            self.filter_entry.config(state=tk.DISABLED)
+            self.proc_entry.config(state=tk.DISABLED)
 
     def load_data_file(self):
         dir_name, file_name = os.path.split(__file__)
@@ -505,29 +556,23 @@ class EmulatorGUI(object):
             return
         if self.emulator is None:
             try:
-                self.start_btn.config(text='Stop')
-                self.start_btn.config(state=tk.DISABLED)
                 self.emulator = Emulator()
                 self._load_config()
                 self.emulator.start(self.filter_str.get())
-                self.start_btn.config(state=tk.NORMAL)
+                self.start_btn.config(text='Stop')
             except Exception as e:
+                self.emulator = None
                 showerror(title='Runtime error',
                           message='Unable to start emulator: %s' % e.message)
-                self.start_btn.config(state=tk.NORMAL)
-                return
         else:
             try:
-                self.start_btn.config(text='Start')
-                self.start_btn.config(state=tk.DISABLED)
                 self.emulator.stop()
                 self.emulator = None
-                self.start_btn.config(state=tk.NORMAL)
+                self.start_btn.config(text='Start')
             except Exception as e:
+                self.emulator = None
                 showerror(title='Runtime error',
                           message='Unable to stop emulator: %s' % e.message)
-                self.start_btn.config(state=tk.NORMAL)
-                return
 
     def _load_config(self):
         if self.emulator is None:
@@ -536,6 +581,10 @@ class EmulatorGUI(object):
         dump_path = self.dump_pos.get()
         if dump_path and os.path.isdir(dump_path):
             self.emulator.set_dump(dump_path)
+        # set emulation device
+        dev_name = self.dev_str.get()
+        if dev_name:
+            self.emulator.set_device(dev_name)
         # set pid list if not empty
         pid_str = self.proc_str.get().strip()
         if pid_str and pid_str != self.prompt_str:
@@ -597,30 +646,7 @@ if __name__ == '__main__':
     emulator.add_pid(-1)
     emulator.set_dump('/Users/baidu/Downloads')
 
-    # 2G
-    # emulator.add_pipe(DelayPipe([0, 10], [0.6, 0.6], 1024), Flags.DIRECTION_IN)
-    # emulator.add_pipe(DelayPipe([0, 10], [0.6, 0.6], 1024), Flags.DIRECTION_OUT)
-    # emulator.add_pipe(BandwidthPipe([0, 10], [5, 5], 1024), Flags.DIRECTION_IN)
-
-    # 2.5G
-    # emulator.add_pipe(DelayPipe([0, 10], [0.3, 0.3], 1024), Flags.DIRECTION_IN)
-    # emulator.add_pipe(DelayPipe([0, 10], [0.3, 0.3], 1024), Flags.DIRECTION_OUT)
-    # emulator.add_pipe(BandwidthPipe([0, 10], [10, 10], 1024), Flags.DIRECTION_IN)
-
-    # 2.75G
     emulator.add_pipe(DelayPipe([0, 10], [0.1, 0.6], 1024), Flags.DIRECTION_IN)
-    # emulator.add_pipe(DelayPipe([0, 10], [0.2, 0.2], 1024), Flags.DIRECTION_OUT)
-    # emulator.add_pipe(BandwidthPipe([0, 10], [30, 30], 1024), Flags.DIRECTION_IN)
-
-    # 3G
-    # emulator.add_pipe(DelayPipe([0, 10], [0.05, 0.05], 1024), Flags.DIRECTION_IN)
-    # emulator.add_pipe(DelayPipe([0, 10], [0.05, 0.05], 1024), Flags.DIRECTION_OUT)
-    # emulator.add_pipe(BandwidthPipe([0, 10], [125, 125], 1024), Flags.DIRECTION_IN)
-
-    # 4G
-    # emulator.add_pipe(DelayPipe([0, 10], [0.015, 0.015], 1024), Flags.DIRECTION_IN)
-    # emulator.add_pipe(DelayPipe([0, 10], [0.015, 0.015], 1024), Flags.DIRECTION_OUT)
-    # emulator.add_pipe(BandwidthPipe([0, 10], [500, 500], 1024), Flags.DIRECTION_IN)
 
     is_looping = True
 

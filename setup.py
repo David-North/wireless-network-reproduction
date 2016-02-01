@@ -10,6 +10,7 @@ import re
 import sys
 import glob
 import shutil
+import subprocess
 
 import PIL
 
@@ -17,6 +18,10 @@ dirname, filename = os.path.split(os.path.abspath(__file__))
 sys.path.append(os.path.join(dirname, 'tcptrace_gui'))
 from setuptools import setup
 from subprocess import Popen, PIPE
+
+p = subprocess.Popen(['brew', '--prefix'], stdout=subprocess.PIPE)
+p.wait()
+BREW_PATH = p.stdout.read().strip('\n')
 
 PAT = re.compile(r'python\d+\.\d+')
 
@@ -28,6 +33,8 @@ APP_NAME = 'NetworkProfiler'
 
 DATA_FILES = glob.glob(os.path.join(PIL_path, '.dylibs/*'))
 
+LIBMAGIC_FILES = glob.glob(os.path.join(BREW_PATH, 'lib', 'libmagic*.dylib'))
+
 OPTIONS = {
     'argv_emulation': False,
     'packages': ['pytcptrace', 'macdivert'],
@@ -38,7 +45,8 @@ OPTIONS = {
     },
     'extra_scripts': ['network_emulator.py'],
     'resources': [('lib/%s/lib-dynload/PIL/.dylibs/'
-                   % PYTHON_VERSION, DATA_FILES), ]
+                   % PYTHON_VERSION, DATA_FILES), ],
+    'frameworks': LIBMAGIC_FILES,
 }
 
 
@@ -108,7 +116,7 @@ setup(
     # Application name
     name=APP_NAME,
     # Entry file
-    app=['tcptrace_gui/main.py'],
+    app=['tcptrace_gui/tcptrace.py'],
     # Static data files
     data_files=DATA_FILES,
     # Other options
