@@ -240,6 +240,8 @@ class Emulator(object):
         self.pid_list = []
         # error information
         self.errmsg = create_string_buffer(Defaults.DIVERT_ERRBUF_SIZE)
+        self.quit_loop = False
+        self.is_waiting = False
 
     def __del__(self):
         lib = self.libdivert_ref
@@ -281,13 +283,16 @@ class Emulator(object):
         return divert_handle, config
 
     def _divert_loop(self, filter_str):
-        # first apply filter string
+        # first add all PIDs into list
+        self._wait_pid()
+        if self.quit_loop:
+            self.quit_loop = False
+            return
+        # then apply filter string
         lib = self.libdivert_ref
         if filter_str:
             if lib.divert_update_ipfw(self.handle, filter_str) != 0:
                 raise RuntimeError(self.handle.errmsg)
-        # then add all pids into list
-        self._wait_pid()
         # finally check the config
         if lib.emulator_config_check(self.config, self.errmsg) != 0:
             raise RuntimeError('Invalid configuration: %s' % self.errmsg)
@@ -322,7 +327,8 @@ class Emulator(object):
         # first wait until all processes are started
         proc_list = filter(lambda x: isinstance(x, str) or isinstance(x, unicode), self.pid_list)
         real_pid_list = filter(lambda x: isinstance(x, int), self.pid_list)
-        while True:
+        self.is_waiting = True
+        while not self.quit_loop:
             if len(real_pid_list) == len(self.pid_list):
                 break
             for proc in psutil.process_iter():
@@ -330,7 +336,12 @@ class Emulator(object):
                 for name in proc_list:
                     if name.lower() in proc_name:
                         real_pid_list.append(proc.pid)
+            print 'Waiting for process: %s' % ', '.join(proc_list)
             time.sleep(0.2)
+        self.is_waiting = False
+        if self.quit_loop:
+            return
+        print 'Got PID: %s' % ', '.join(map(str, real_pid_list))
         lib = self.libdivert_ref
         arr_len = len(real_pid_list)
         arr_type = c_int32 * arr_len
@@ -348,7 +359,12 @@ class Emulator(object):
         self.thread.start()
 
     def stop(self):
-        self._divert_loop_stop()
+        # if emulator is waiting on PIDs
+        # then just use a quit loop flag
+        if self.is_waiting:
+            self.quit_loop = True
+        else:
+            self._divert_loop_stop()
         self.thread.join(timeout=1.0)
         if self.thread.isAlive():
             raise RuntimeError('Divert loop failed to stop.')
@@ -554,6 +570,10 @@ class EmulatorGUI(object):
             showerror(title='Configuration Error',
                       message='No available conf file.')
             return
+        if self.proc_str.get() == self.prompt_str:
+            showerror(title='Process/PID Error',
+                      message='You should set legal PIDs or leave it blank.')
+            return
         if self.emulator is None:
             try:
                 self.emulator = Emulator()
@@ -605,7 +625,12 @@ class EmulatorGUI(object):
             direction = pipe.pop('direction', None)
             if not direction:
                 raise RuntimeError('Configuration do not have direction field')
-            dir_flag = Flags.DIRECTION_OUT if direction == "out" else Flags.DIRECTION_IN
+            if direction == "out":
+                dir_flag = Flags.DIRECTION_OUT
+            elif direction == "in":
+                dir_flag = Flags.DIRECTION_IN
+            else:
+                raise RuntimeError('Unknown direction flag')
             size_filter = self._create_filter(pipe.pop('filter', None))
             try:
                 pipe_type = self.pipe_name2type[pipe_name.lower()]
