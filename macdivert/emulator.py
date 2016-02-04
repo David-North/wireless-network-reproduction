@@ -414,13 +414,13 @@ class EmulatorGUI(object):
     }
 
     def exit_func(self):
-        self._flush_ipfw()
         if self.emulator is not None:
             try:
                 self.emulator.stop()
                 self.emulator = None
             except Exception as e:
                 print e.message
+        self._flush_ipfw()
         self.master.quit()
         self.master.destroy()
 
