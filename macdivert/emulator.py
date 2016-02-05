@@ -451,6 +451,7 @@ class EmulatorGUI(object):
         self.data_file = tk.StringVar()
         self.dev_str = tk.StringVar()
         self.dump_pos = tk.StringVar()
+        self.divert_unknown = tk.IntVar(value=1)
 
         self.start_btn = None
         self.filter_entry = None
@@ -479,7 +480,7 @@ class EmulatorGUI(object):
 
     def init_GUI(self):
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='Configuration:').pack(side=tk.LEFT)
+        tk.Label(master=new_frame, text='Configuration').pack(side=tk.LEFT)
         tk.Entry(master=new_frame, textvariable=self.data_file)\
             .pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tk.Button(master=new_frame, text='Select',
@@ -487,7 +488,7 @@ class EmulatorGUI(object):
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='Dump .pcap to:').pack(side=tk.LEFT)
+        tk.Label(master=new_frame, text='Dump .pcap to').pack(side=tk.LEFT)
         tk.Entry(master=new_frame, textvariable=self.dump_pos)\
             .pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tk.Button(master=new_frame, text='Select',
@@ -495,16 +496,18 @@ class EmulatorGUI(object):
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='Filter Expr').pack(side=tk.LEFT)
+        tk.Label(master=new_frame, text='Filter Rule').pack(side=tk.LEFT)
         self.filter_entry = tk.Entry(master=new_frame, textvariable=self.filter_str, font='Monaco')
         self.filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='Proc List').pack(side=tk.LEFT)
+        tk.Label(master=new_frame, text='Process List').pack(side=tk.LEFT)
         self.proc_entry = tk.Entry(master=new_frame, textvariable=self.proc_str,
                                    font='Monaco', width=len(self.proc_str.get()))
         self.proc_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(master=new_frame, text='unknown').pack(side=tk.LEFT)
+        tk.Checkbutton(master=new_frame, variable=self.divert_unknown).pack(side=tk.LEFT)
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
@@ -608,7 +611,8 @@ class EmulatorGUI(object):
         # set pid list if not empty
         pid_str = self.proc_str.get().strip()
         if pid_str and pid_str != self.prompt_str:
-            self.emulator.add_pid(-1)
+            if self.divert_unknown.get():
+                self.emulator.add_pid(-1)
             for pid in map(lambda x: x.strip(), pid_str.split(',')):
                 try:
                     pid_int = int(pid)
