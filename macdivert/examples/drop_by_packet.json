@@ -1,0 +1,11 @@
+[
+  {
+    "pipe": "drop",
+    "direction": "in",
+    "filter": {
+      "size": [],
+      "rate": []
+    },
+    "drop_rate": [0, 1, 0, 1, 0, 0, 1]
+  }
+]

@@ -77,18 +77,19 @@ class DelayPipe(BasicPipe):
 
 
 class DropPipe(BasicPipe):
-    def __init__(self, t, drop_rate, size_filter_obj=None):
+    def __init__(self, drop_rate, t=None,
+                 size_filter_obj=None):
         super(DropPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'drop_pipe_create'), "argtypes",
                 [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float)])
         setattr(getattr(self._lib, 'drop_pipe_create'), "restype", c_void_p)
-        arr_len = len(t)
+        arr_len = len(drop_rate)
         arr_type = c_float * arr_len
         # then check packet size filter handle
         filter_handle = None if size_filter_obj is None else size_filter_obj.handle
         self.handle = self._lib.drop_pipe_create(filter_handle, arr_len,
-                                                 arr_type(*list(t)),
+                                                 arr_type(*list(t)) if t else None,
                                                  arr_type(*list(drop_rate)))
 
 
