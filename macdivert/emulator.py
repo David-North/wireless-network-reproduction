@@ -2,14 +2,14 @@
 
 import os
 import json
-import time
 import copy
 import psutil
-import signal
 import threading
+import netifaces
+import socket
 import Tkinter as tk
 from macdivert import MacDivert
-from tkMessageBox import showerror
+from tkMessageBox import showerror, showwarning
 from enum import Defaults
 from tkFileDialog import askopenfilename, askdirectory
 from ctypes import POINTER, pointer, cast
@@ -58,18 +58,20 @@ class BasicPipe(object):
 
 
 class DelayPipe(BasicPipe):
-    def __init__(self, t, delay_time, queue_size=Flags.DELAY_QUEUE_SIZE, size_filter_obj=None):
+    def __init__(self, delay_time, t=None,
+                 queue_size=Flags.DELAY_QUEUE_SIZE,
+                 size_filter_obj=None):
         super(DelayPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'delay_pipe_create'), "argtypes",
                 [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
         setattr(getattr(self._lib, 'delay_pipe_create'), "restype", c_void_p)
-        arr_len = len(t)
+        arr_len = len(delay_time)
         arr_type = c_float * arr_len
         # then check packet size filter handle
         filter_handle = None if size_filter_obj is None else size_filter_obj.handle
         self.handle = self._lib.delay_pipe_create(filter_handle, arr_len,
-                                                  arr_type(*list(t)),
+                                                  arr_type(*list(t)) if t else None,
                                                   arr_type(*list(delay_time)),
                                                   queue_size)
 
@@ -179,10 +181,9 @@ class Emulator(object):
 
     emulator_argtypes = {
         'emulator_callback': [c_void_p, c_void_p, c_char_p, c_char_p],
-        'emulator_create_config': [c_void_p, c_size_t],
+        'emulator_create_config': [c_void_p],
         'emulator_destroy_config': [c_void_p],
-        'emulator_start': [c_void_p],
-        'emulator_stop': [c_void_p],
+        'emulator_flush': [c_void_p],
         'emulator_add_pipe': [c_void_p, c_void_p, c_int],
         'emulator_del_pipe': [c_void_p, c_void_p, c_int],
         'emulator_add_flag': [c_void_p, c_uint64],
@@ -200,8 +201,7 @@ class Emulator(object):
         'emulator_callback': None,
         'emulator_create_config': c_void_p,
         'emulator_destroy_config': None,
-        'emulator_start': None,
-        'emulator_stop': None,
+        'emulator_flush': None,
         'emulator_add_pipe': c_int,
         'emulator_del_pipe': c_int,
         'emulator_add_flag': None,
@@ -296,14 +296,15 @@ class Emulator(object):
         # finally check the config
         if lib.emulator_config_check(self.config, self.errmsg) != 0:
             raise RuntimeError('Invalid configuration: %s' % self.errmsg)
-        lib.emulator_start(self.config)
         lib.divert_loop(self.handle, -1)
 
     def _divert_loop_stop(self):
         lib = self.libdivert_ref
         lib.divert_loop_stop(self.handle)
-        lib.divert_loop_join(self.handle)
-        lib.emulator_stop(self.config)
+        lib.divert_loop_wait(self.handle)
+        print 'Emulator stop OK'
+        lib.emulator_flush(self.config)
+        print 'Emulator flush OK'
 
     def add_pipe(self, pipe, direction=Flags.DIRECTION_IN):
         lib = self.libdivert_ref
@@ -384,8 +385,6 @@ class EmulatorGUI(object):
 
     default_device = 'bridge100'
 
-    default_rule = 'ip from any to any via en0'
-
     kext_errmsg = """
     Kernel extension load failed.
     Please check if you have root privilege on your Mac.
@@ -430,6 +429,28 @@ class EmulatorGUI(object):
             lib = Emulator.libdivert_ref
             lib.ipfw_flush(buf)
 
+    def decide_iface(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("gmail.com", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+        except:
+            showwarning('Network Error',
+                        ('Your host machine may not have a valid network connection.\n'
+                         'You should **manually** choose your network device name in filter rule.'))
+            return
+        iface_lst = netifaces.interfaces()
+        for iface in iface_lst:
+            addrs = netifaces.ifaddresses(iface)
+            if netifaces.AF_INET in addrs:
+                addr_dict = addrs[netifaces.AF_INET][0]
+                if 'addr' in addr_dict:
+                    if addr_dict['addr'] == local_ip:
+                        print 'Found activate network interface: %s' % iface
+                        self.iface = iface
+                        return
+
     def __init__(self, master):
         self.master = master
         self.emulator = None
@@ -443,6 +464,11 @@ class EmulatorGUI(object):
             showerror('Privilege Error', 'You should run this program as root.')
             self.master.destroy()
             return
+
+        # then find the current activate network interface
+        self.iface = '<network device name>'
+        self.decide_iface()
+        self.default_rule = 'ip from any to any via %s' % self.iface
 
         self.inbound_list = []
         self.outbound_list = []
