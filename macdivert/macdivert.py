@@ -1,14 +1,15 @@
 # encoding: utf8
 
 import os
+import Queue
+import threading
 import libdivert as nids
 from copy import deepcopy
 from ctypes import cdll
-from pwd import getpwuid
-from enum import Defaults, Flags, Read_stats
+from enum import Defaults, Flags
 from ctypes import POINTER, pointer, cast
-from ctypes import (c_void_p, c_uint32, c_char_p, c_int,
-                    create_string_buffer, c_ushort, c_ssize_t)
+from ctypes import (c_void_p, c_uint32, c_char_p, c_int, CFUNCTYPE,
+                    create_string_buffer, c_ushort, c_ssize_t, c_char)
 from models import ProcInfo, IpHeader, PacketHeader, DivertHandleRaw
 
 __author__ = 'huangyan13@baidu.com'
@@ -29,8 +30,6 @@ class MacDivert:
         "divert_is_inbound": [c_char_p, c_void_p],
         "divert_is_outbound": [c_char_p],
         "divert_set_callback": [c_void_p, c_void_p, c_void_p],
-        "divert_set_signal_handler": [c_int, c_void_p, c_void_p],
-        "divert_signal_handler_stop_loop": [c_int, c_void_p],
         "divert_init_pcap": [c_void_p],
         "divert_dump_pcap": [c_void_p, c_void_p],
         "divert_find_tcp_stream": [c_char_p],
@@ -62,8 +61,6 @@ class MacDivert:
         "divert_is_inbound": c_int,
         "divert_is_outbound": c_int,
         "divert_set_callback": c_int,
-        "divert_set_signal_handler": c_int,
-        "divert_signal_handler_stop_loop": None,
         "divert_init_pcap": c_int,
         "divert_dump_pcap": c_int,
         "divert_find_tcp_stream": c_void_p,
@@ -167,6 +164,9 @@ class MacDivert:
 
 
 class DivertHandle:
+    cmp_func_type = CFUNCTYPE(None, c_void_p, POINTER(ProcInfo),
+                              POINTER(c_char), POINTER(c_char))
+
     def __init__(self, libdivert=None, port=0, filter_str="",
                  flags=0, count=-1, encoding='utf-8'):
         if not libdivert:
@@ -174,12 +174,6 @@ class DivertHandle:
             self._libdivert = MacDivert()
         else:
             self._libdivert = libdivert
-        # buffer to store packet data
-        self._ip_packet = create_string_buffer(Defaults.PACKET_BUFFER_SIZE)
-        # buffer to store process information
-        self._proc_info_buffer = create_string_buffer(Defaults.PROC_INFO_SIZE)
-        # buffer to store socket address
-        self._sockaddr = create_string_buffer(Defaults.SOCKET_ADDR_SIZE)
 
         self._lib = self._libdivert.get_reference()
         self._port = port
@@ -187,16 +181,40 @@ class DivertHandle:
         self._filter = filter_str.encode(encoding)
         self._flags = flags
         self.encoding = encoding
+        self.packet_queue = Queue.Queue()
+        self.num_queued = 0
+
         # create divert handle
-        self._handle = self._lib.divert_create(self._port,
-                                               self._flags |
-                                               Flags.DIVERT_FLAG_BLOCK_IO |
-                                               Flags.DIVERT_FLAG_FAST_EXIT)
-        self._cleaned = True
-        # create active flag
-        self.active = False
+        self._handle = self._lib.divert_create(self._port, self._flags)
+
+        def ip_callback(args, proc_info, ip_data, sockaddr):
+            packet = Packet()
+            # check if IP packet is legal
+            ptr_packet = cast(ip_data, POINTER(IpHeader))
+            header_len = ptr_packet[0].get_header_length()
+            packet_length = ptr_packet[0].get_total_length()
+            if packet_length > 0 and header_len > 0:
+                packet.valid = True
+                # try to extract the process information
+                if proc_info[0].pid != -1 or proc_info[0].epid != -1:
+                    packet.proc = deepcopy(proc_info[0])
+                # save the IP packet data
+                packet.ip_data = ip_data[0:packet_length]
+                # save the sockaddr info for re-inject
+                packet.sockaddr = sockaddr[0:Defaults.SOCKET_ADDR_SIZE]
+                self.packet_queue.put(packet)
+        # convert callback function type into C type
+        self.ip_callback = self.cmp_func_type(ip_callback)
+        # and register it into divert handle
+        self._lib.divert_set_callback(self._handle, self.ip_callback, self._handle)
+        # finally activate the divert handle
+        if self._lib.divert_activate(self._handle) != 0:
+            raise RuntimeError(self._handle[0].errmsg)
+        self._cleaned = False
+        self.thread = None
 
     def __del__(self):
+        self.close()
         if not self._cleaned:
             self._cleaned = True
             # free close the divert handle
@@ -215,40 +233,46 @@ class DivertHandle:
 
     @property
     def eof(self):
-        if self.active:
-            if self._lib.divert_is_looping(self._handle) == 0:
-                self.active = False
-                return True
-            else:
-                return False
-        else:
-            return True
+        """
+        :return: True if there is no data to read at this time
+        """
+        return self.packet_queue.qsize() == 0
 
     @property
     def closed(self):
-        return not self.active
+        """
+        :return: True if there is no data to read any more
+        """
+        if self.thread is not None:
+            if not self.thread.isAlive():
+                self.thread = None
+        return self.thread is None and self.eof
+
+    def close(self):
+        for i in range(self.num_queued):
+            packet = Packet()
+            packet.valid = False
+            self.packet_queue.put(packet)
+        if self.thread is not None:
+            # stop the event loop only when thread is alive
+            if self.thread.isAlive():
+                self._lib.divert_loop_stop(self._handle)
+            self.thread.join()
+            self.thread = None
 
     def open(self):
-        if self._lib.divert_activate(self._handle) != 0:
-            raise RuntimeError(self._handle[0].errmsg)
-        self.active = True
-        self._cleaned = False
-
+        def _loop():
+            self._lib.divert_loop(self._handle, self._count)
+        # set the ipfw filter
         if self._filter:
             self.set_filter(self._filter)
-
-        self._lib.divert_loop(self._handle, self._count)
-
+        # and start background thread
+        self.thread = threading.Thread(target=_loop)
+        self.thread.start()
         return self
 
     def open_pcap(self, filename):
         return PcapHandle(filename, self._libdivert)
-
-    def close(self):
-        if self.active:
-            # stop the event loop
-            self._lib.divert_loop_stop(self._handle)
-            self.active = False
 
     def set_filter(self, filter_str):
         if filter_str:
@@ -261,37 +285,15 @@ class DivertHandle:
         else:
             return False
 
-    def read(self):
-        status = self._lib.divert_read(self._handle,
-                                       self._proc_info_buffer,
-                                       self._ip_packet,
-                                       self._sockaddr)
-        ret_val = Packet()
-        if status == 0:
-            # try to extract the process information
-            ptr_proc_info = cast(self._proc_info_buffer, POINTER(ProcInfo))
-            if ptr_proc_info[0].pid != -1 or ptr_proc_info[0].epid != -1:
-                ret_val.proc = deepcopy(ptr_proc_info[0])
-
-            # check if IP header is legal
-            ptr_packet = cast(self._ip_packet, POINTER(IpHeader))
-            header_len = ptr_packet[0].get_header_length()
-            packet_length = ptr_packet[0].get_total_length()
-            if packet_length > 0 and header_len > 0:
-                ret_val.ip_data = self._ip_packet[0:packet_length]
-
-            # save the sockaddr for re-inject
-            ret_val.sockaddr = self._sockaddr[0:Defaults.SOCKET_ADDR_SIZE]
-            ret_val.valid = True
-        else:
-            ret_val.flag = status
-            ret_val.valid = False
-
-        return ret_val
+    def read(self, *args, **kwargs):
+        self.num_queued += 1
+        res = self.packet_queue.get(*args, **kwargs)
+        self.num_queued -= 1
+        return res
 
     def write(self, packet_obj):
-        if self.eof:
-            raise RuntimeError("Divert handle EOF.")
+        if self.closed:
+            raise RuntimeError("Divert handle closed.")
 
         if not packet_obj or not packet_obj.sockaddr or not packet_obj.ip_data:
             raise RuntimeError("Invalid packet data.")
@@ -305,13 +307,8 @@ class DivertHandle:
     def is_outbound(self, sockaddr):
         return self._lib.divert_is_outbound(sockaddr) != 0
 
-    def set_stop_signal(self, signum):
-        return self._lib.divert_set_signal_handler(
-            signum, self._lib.divert_signal_handler_stop_loop, self._handle
-        )
-
     def find_tcp_stream(self, packet):
-        if self.eof:
+        if self.closed:
             raise RuntimeError("Divert socket is closed.")
         stream_p = self._lib.divert_find_tcp_stream(packet.ip_data)
         if stream_p:
@@ -340,7 +337,7 @@ class PcapHandle:
         self.filename = filename
         self._load_libc()
         self._lib = libdivert.get_reference()
-        self._errmsg = create_string_buffer(Defaults.PACKET_BUFFER_SIZE)
+        self._errmsg = create_string_buffer(Defaults.DIVERT_ERRBUF_SIZE)
 
         self._fp = self._libc.fopen(filename, 'wb')
         if not self._fp:

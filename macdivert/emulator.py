@@ -373,7 +373,7 @@ class Emulator(object):
 
     @property
     def is_looping(self):
-        return self.thread is not None
+        return self.thread is not None and self.thread.isAlive()
 
     def data_size(self, direction):
         lib = self.libdivert_ref
