@@ -292,14 +292,7 @@ class Emulator(object):
         if self.quit_loop:
             self.quit_loop = False
             return
-        # then apply filter string
         lib = self.libdivert_ref
-        if filter_str:
-            if lib.divert_update_ipfw(self.handle, filter_str) != 0:
-                raise RuntimeError(self.handle.errmsg)
-        # finally check the config
-        if lib.emulator_config_check(self.config, self.errmsg) != 0:
-            raise RuntimeError('Invalid configuration: %s' % self.errmsg)
         lib.divert_loop(self.handle, -1)
 
     def _divert_loop_stop(self):
@@ -346,7 +339,7 @@ class Emulator(object):
         self.is_waiting = False
         if self.quit_loop:
             return
-        print 'Got PID: %s' % ', '.join(map(str, real_pid_list))
+        print 'Found PID: %s' % ', '.join(map(str, real_pid_list))
         lib = self.libdivert_ref
         arr_len = len(real_pid_list)
         arr_type = c_int32 * arr_len
@@ -359,6 +352,15 @@ class Emulator(object):
         lib.emulator_set_dump_pcap(self.config, directory)
 
     def start(self, filter_str=''):
+        # first check the config
+        lib = self.libdivert_ref
+        if lib.emulator_config_check(self.config, self.errmsg) != 0:
+            raise RuntimeError('Invalid configuration:\n%s' % self.errmsg.value)
+        print 'Config check OK'
+        # then apply filter string
+        if filter_str:
+            if lib.divert_update_ipfw(self.handle, filter_str) != 0:
+                raise RuntimeError(self.handle.errmsg)
         # start a new thread to run emulator
         self.thread = threading.Thread(target=self._divert_loop, args=(filter_str,))
         self.thread.start()
@@ -616,7 +618,7 @@ class EmulatorGUI(object):
             except Exception as e:
                 self.emulator = None
                 showerror(title='Runtime error',
-                          message='Unable to start emulator: %s' % e.message)
+                          message='Unable to start emulator:\n%s' % e.message)
         else:
             try:
                 self.emulator.stop()
@@ -625,7 +627,7 @@ class EmulatorGUI(object):
             except Exception as e:
                 self.emulator = None
                 showerror(title='Runtime error',
-                          message='Unable to stop emulator: %s' % e.message)
+                          message='Unable to stop emulator:\n%s' % e.message)
 
     def _load_config(self):
         if self.emulator is None:
