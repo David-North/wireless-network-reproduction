@@ -29,7 +29,7 @@ PIL_path, init_file = os.path.split(PIL.__file__)
 
 PYTHON_VERSION = PAT.search(PIL_path).group()
 
-APP_NAME = 'NetworkProfiler'
+APP_NAME = 'NetworkPerformanceAnalyze'
 
 DATA_FILES = glob.glob(os.path.join(PIL_path, '.dylibs/*'))
 

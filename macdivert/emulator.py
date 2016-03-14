@@ -459,7 +459,7 @@ class EmulatorGUI(object):
         self.master = master
         self.emulator = None
         self.conf = None
-        master.title("Network Emulator")
+        master.title("Wireless Network Reproduction")
         master.protocol("WM_DELETE_WINDOW", self.exit_func)
 
         # first check root privilege
