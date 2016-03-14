@@ -1,12 +1,15 @@
 # encoding: utf8
 
 import os
+import sys
 import json
 import copy
 import psutil
 import threading
 import netifaces
 import socket
+import time
+import signal
 import Tkinter as tk
 from macdivert import MacDivert
 from tkMessageBox import showerror, showwarning
@@ -684,9 +687,6 @@ class EmulatorGUI(object):
 
 
 if __name__ == '__main__':
-    import sys
-    import time
-    import signal
 
     pid_num = 0
 
