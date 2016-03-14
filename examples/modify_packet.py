@@ -5,7 +5,7 @@ import sys
 sys.path.append(os.getcwd())
 from macdivert import MacDivert, DivertHandle
 from impacket import ImpactDecoder, ImpactPacket
-from signal import SIGINT
+from signal import SIGINT, signal
 import random
 import socket
 
@@ -17,10 +17,13 @@ def work(rate):
     ip_decoder = ImpactDecoder.IPDecoder()
     with DivertHandle(libdivert, 0, "tcp from any to any via en0") as fid:
         # register stop loop signal
-        fid.set_stop_signal(SIGINT)
-        while not fid.eof:
-            divert_packet = fid.read()
-            if divert_packet.valid and not fid.eof:
+        signal(SIGINT, lambda x, y: fid.close())
+        while not fid.closed:
+            try:
+                divert_packet = fid.read(timeout=0.5)
+            except:
+                continue
+            if divert_packet.valid:
                 # decode the IP packet
                 ip_packet = ip_decoder.decode(divert_packet.ip_data)
                 if ip_packet.get_ip_p() == socket.IPPROTO_TCP:
@@ -45,7 +48,8 @@ def work(rate):
                         ip_packet.calculate_checksum()
                         # finally replace the raw data of diverted packet with modified one
                         divert_packet.ip_data = ip_packet.get_packet()
-                fid.write(divert_packet)
+                if not fid.closed:
+                    fid.write(divert_packet)
 
 
 if __name__ == '__main__':

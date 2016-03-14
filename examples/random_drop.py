@@ -5,7 +5,7 @@ import sys
 sys.path.append(os.getcwd())
 from macdivert import MacDivert, DivertHandle
 from random import random
-from signal import SIGINT
+from signal import SIGINT, signal
 
 __author__ = 'huangyan13@baidu.com'
 
@@ -13,21 +13,24 @@ __author__ = 'huangyan13@baidu.com'
 def work(pid, rate):
     num_total = 0
     num_dropped = 0
-    num_with_pktap = 0
+    num_with_pid = 0
     libdivert = MacDivert()
     with DivertHandle(libdivert, 0, "ip from any to any in via en0") as fid:
         # register stop loop signal
-        fid.set_stop_signal(SIGINT)
-        while not fid.eof:
-            packet = fid.read()
+        signal(SIGINT, lambda x, y: fid.close())
+        while not fid.closed:
+            try:
+                packet = fid.read(timeout=0.5)
+            except:
+                continue
             if packet.valid:
                 num_total += 1
                 if packet.proc and packet.proc.pid != -1:
-                    num_with_pktap += 1
+                    num_with_pid += 1
 
-            if packet.valid and not fid.eof:
+            if packet.valid and not fid.closed:
                 if packet.proc and packet.proc.pid == pid:
-                    if random() < 1 - rate:
+                    if random() > rate:
                         fid.write(packet)
                     else:
                         num_dropped += 1
@@ -35,9 +38,9 @@ def work(pid, rate):
                     fid.write(packet)
 
         print "Packets total: %d" % num_total
-        print "Packets with process info: %d" % num_with_pktap
+        print "Packets with process info: %d" % num_with_pid
         print "Packets dropped: %d" % num_dropped
-        print "Accuracy: %f" % (float(num_with_pktap) / num_total)
+        print "Accuracy: %f" % (float(num_with_pid) / num_total)
 
 
 if __name__ == '__main__':
