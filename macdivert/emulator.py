@@ -460,7 +460,11 @@ class EmulatorGUI(object):
     def __init__(self, master):
         self.master = master
         self.emulator = None
-        self.conf = None
+
+        self.conf_dict = {}
+        self.conf_name = tk.StringVar()
+        self.conf_frame = None
+
         master.title("Wireless Network Reproduction")
         master.protocol("WM_DELETE_WINDOW", self.exit_func)
 
@@ -480,7 +484,6 @@ class EmulatorGUI(object):
         self.outbound_list = []
         self.filter_str = tk.StringVar(value=self.default_rule)
         self.proc_str = tk.StringVar(value=self.prompt_str)
-        self.data_file = tk.StringVar()
         self.dev_str = tk.StringVar()
         self.dump_pos = tk.StringVar()
         self.divert_unknown = tk.IntVar(value=1)
@@ -512,11 +515,10 @@ class EmulatorGUI(object):
 
     def init_GUI(self):
         new_frame = tk.Frame(master=self.master)
-        tk.Label(master=new_frame, text='Configuration').pack(side=tk.LEFT)
-        tk.Entry(master=new_frame, textvariable=self.data_file)\
-            .pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tk.Button(master=new_frame, text='Select',
+        tk.Button(master=new_frame, text='Add Configuration',
                   command=self.load_data_file).pack(side=tk.LEFT)
+        self.conf_frame = tk.Frame(master=new_frame)
+        self.conf_frame.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
         new_frame = tk.Frame(master=self.master)
@@ -584,14 +586,17 @@ class EmulatorGUI(object):
         file_path = askopenfilename(title='Choose .json file', initialdir=dir_name)
         if file_path and os.path.isfile(file_path):
             try:
-                self.data_file.set(file_path)
-                with open(self.data_file.get(), 'r') as fid:
+                head, tail = os.path.split(file_path)
+                with open(file_path, 'r') as fid:
                     data = fid.read()
-                    self.conf = json.loads(data)
+                    self.conf_dict[file_path] = json.loads(data)
+                    tk.Radiobutton(self.conf_frame, text=tail.split('.')[0],
+                                   variable=self.conf_name,
+                                   value=file_path).pack(side=tk.LEFT)
+                    self.conf_name.set(file_path)
             except Exception as e:
                 showerror(title='Open file',
                           message='Unable to load json: %s' % e.message)
-                self.conf = None
 
     def load_dump_pos(self):
         dir_name, file_name = os.path.split(__file__)
@@ -601,7 +606,7 @@ class EmulatorGUI(object):
         self.dump_pos.set(dir_path)
 
     def start(self):
-        if not self.conf:
+        if self.conf_name.get() not in self.conf_dict:
             showerror(title='Configuration Error',
                       message='No available conf file.')
             return
@@ -652,7 +657,7 @@ class EmulatorGUI(object):
                 except:
                     self.emulator.add_pid(pid)
         # finally load all pipes
-        for pipe in copy.deepcopy(self.conf):
+        for pipe in copy.deepcopy(self.conf_dict[self.conf_name.get()]):
             if not isinstance(pipe, dict):
                 raise TypeError('Invalid configuration')
             pipe_name = pipe.pop('pipe', None)
