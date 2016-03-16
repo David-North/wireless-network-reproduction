@@ -43,7 +43,8 @@ OPTIONS = {
         'CFBundleShortVersionString': '1.0.0',
         'CFBundleIconFile': 'icon.icns',
     },
-    'extra_scripts': ['network_emulator.py'],
+    'extra_scripts': ['network_emulator.py',
+                      'scripts/show_delay.py'],
     'resources': [('lib/%s/lib-dynload/PIL/.dylibs/'
                    % PYTHON_VERSION, DATA_FILES), ],
     'frameworks': LIBMAGIC_FILES,

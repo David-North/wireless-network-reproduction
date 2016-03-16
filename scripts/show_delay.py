@@ -1,3 +1,4 @@
+import sys
 import socket
 import struct
 import time
@@ -21,7 +22,9 @@ def server_thread_func():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     global num_send
     while True:
-        data = struct.pack("<l", num_send) + struct.pack("<d", time.time())
+        data = struct.pack("<l", num_send) + \
+               struct.pack("<d", time.time()) + \
+               '-' * (num_send % 30 + 1)
         sock.sendto(data, address)
         num_send += 1
         sleep(0.05)
@@ -37,14 +40,13 @@ def main():
         try:
             data, addr = s.recvfrom(2048)
             num_recv += 1
-            for i in xrange(0, len(data), 12):
-                recv_time = time.time()
-                send_time = struct.unpack("<d", data[i + 4:i + 12])
-                idx = struct.unpack("<l", data[i:i + 4])[0]
-                print 'Packet %6d Delay: %.3f ms' % (idx, (recv_time - send_time[0]) * 1000)
+            recv_time = time.time()
+            send_time = struct.unpack("<d", data[4:12])
+            idx = struct.unpack("<l", data[0:4])[0]
+            print 'No.%3d %.2fms %s' % (idx, (recv_time - send_time[0]) * 1000, data[12:])
         except:
             print 'Send: %d, received:%d' % (num_send, num_recv)
-            exit(0)
+            sys.exit(0)
     s.close()
 
 if __name__ == '__main__':
