@@ -1,4 +1,5 @@
 .idea/
+pages/
 *.pyc
 *.so
 *.dylib
