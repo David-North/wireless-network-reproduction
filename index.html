@@ -22,9 +22,11 @@
 
     <section class="main-content">
       
-      <h2>About</h2>
+      <h2>Introduction</h2>
 
-<p><a href="https://github.com/FinalTheory/wireless-network-reproduction">Wireless Network Reproduction</a> (aka WNR) is a network emulator which allows developers to exactly reproduce any kind of terrible network condition on your own mobile device, or Android/iOS emulators running on Mac OS.</p>
+<p><a href="https://github.com/FinalTheory/wireless-network-reproduction">Wireless Network Reproduction</a> (aka WNR) is a network emulator which allows developers to exactly reproduce any kind of terrible network condition on your own mobile device, or even Android/iOS emulators running on Mac OS.</p>
+
+<p><img src="/wireless-network-reproduction/images/interface.png" width="500px"></img></p>
 
 <p>Aspects that can be controlled by WNR include:</p>
 
@@ -41,8 +43,8 @@
 <p>You could run WNR in two different mode:</p>
 
 <ol>
-<li>Gateway Mode:</li>
-<li>Emulator Mode:</li>
+<li>Gateway Mode: First share your internet connection through <a href="https://support.apple.com/kb/PH18704">Internet-Sharing</a>, and then WNR would shape / interfere the network traffic between your MacBook and your mobile device, just like a router.</li>
+<li>Emulator Mode: Just start an Android / iOS emulator, specify the process name in WNR, and then you will have emulated network condition in your virtual machine. In this mode you don&#39;t need a real mobile phone.</li>
 </ol>
 
 <h2>Requirements</h2>
@@ -62,10 +64,28 @@
 
 <ul>
 <li><strong>DO NOT</strong> run this application directly in dmg image!!! You should first extract it from image, save it into a local folder, and then try to run it.</li>
-<li>Path to the app should <strong>NOT</strong> contain any non-ASCII characters, otherwise it would encounter an error.</li>
+<li>Path to the application should <strong>NOT</strong> contain any non-ASCII characters, otherwise it would encounter an error.</li>
 </ul>
 
 <h2>Examples</h2>
+
+<h3>Network Emulation</h3>
+
+<p>The following animation shows the basic usages of WNR.</p>
+
+<p><img src="/wireless-network-reproduction/images/demo.gif"></img></p>
+
+<h3>Bandwidth Limitation</h3>
+
+<p>The following animation shows how to limit bandwidth of a specific process such as <code>wget</code>.</p>
+
+<p><img src="/wireless-network-reproduction/images/bandwidth.gif"></img></p>
+
+<h3>TCP Connection Analyze</h3>
+
+<p>We use a time-related function <code>bandwidth(t) = 256 + 1024 * sin(t/4) (KB/s)</code> to emulate some sort of dynamic bandwidth limitation, and then use TCP data visualization of WNR to show the actual bandwidth variation, which results in the figure shown below:</p>
+
+<p><img src="/wireless-network-reproduction/images/bandwidth.png"></img></p>
 
 <h2>Architecture</h2>
 
