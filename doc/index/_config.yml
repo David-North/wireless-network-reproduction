@@ -4,7 +4,7 @@ tagline:      Advanced network emulation tool to reproduce specific bad network 
 baseurl:      "/wireless-network-reproduction"
 url: https://github.com/FinalTheory/wireless-network-reproduction
 zip: https://github.com/FinalTheory/WirelessNetworkReproduction/zipball/master
-dmg: https://github.com/FinalTheory/wireless-network-reproduction/releases/download/v1.01/NetworkPerformanceAnalyze.dmg
+dmg: https://github.com/FinalTheory/wireless-network-reproduction/releases/download/v1.02/NetworkPerformanceAnalyze.dmg
 
 # About/contact
 author:
