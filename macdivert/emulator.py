@@ -387,6 +387,8 @@ class Emulator(object):
 
 
 class EmulatorGUI(object):
+    LOCAL_MODE = 0
+    ROUTER_MODE = 1
     prompt_str = 'PID / comma separated process name'
 
     default_device = 'bridge100'
@@ -492,7 +494,7 @@ class EmulatorGUI(object):
         self.filter_entry = None
         self.proc_entry = None
         self.dev_entry = None
-        self.mode = tk.IntVar()
+        self.mode = tk.IntVar(self.LOCAL_MODE)
         self.init_GUI()
 
         try:
@@ -564,7 +566,7 @@ class EmulatorGUI(object):
         new_frame.pack(side=tk.TOP, fill=tk.X, expand=True)
 
     def _switch_mode(self):
-        if self.mode.get() == 0:
+        if self.mode.get() == self.LOCAL_MODE:
             # local mode
             self.dev_str.set('')
             self.dev_entry.config(state=tk.DISABLED)
@@ -572,13 +574,15 @@ class EmulatorGUI(object):
             self.proc_entry.config(state=tk.NORMAL)
             self.filter_str.set(self.default_rule)
             self.proc_str.set(self.prompt_str)
-        else:
+        elif self.mode.get() == self.ROUTER_MODE:
             self.dev_entry.config(state=tk.NORMAL)
             self.dev_str.set(self.default_device)
             self.filter_str.set('ip from any to any')
             self.proc_str.set('')
             self.filter_entry.config(state=tk.DISABLED)
             self.proc_entry.config(state=tk.DISABLED)
+        else:
+            raise RuntimeError('Unknown Mode!')
 
     def load_data_file(self):
         dir_name, file_name = os.path.split(__file__)
@@ -646,16 +650,22 @@ class EmulatorGUI(object):
         if dev_name:
             self.emulator.set_device(dev_name)
         # set pid list if not empty
-        pid_str = self.proc_str.get().strip()
-        if pid_str and pid_str != self.prompt_str:
-            if self.divert_unknown.get():
-                self.emulator.add_pid(-1)
-            for pid in map(lambda x: x.strip(), pid_str.split(',')):
-                try:
-                    pid_int = int(pid)
-                    self.emulator.add_pid(pid_int)
-                except:
-                    self.emulator.add_pid(pid)
+        if self.mode.get() == self.LOCAL_MODE:
+            pid_str = self.proc_str.get().strip()
+            if pid_str and pid_str != self.prompt_str:
+                if self.divert_unknown.get():
+                    self.emulator.add_pid(-1)
+                for pid in map(lambda x: x.strip(), pid_str.split(',')):
+                    try:
+                        pid_int = int(pid)
+                        self.emulator.add_pid(pid_int)
+                    except:
+                        self.emulator.add_pid(pid)
+        elif self.mode.get() == self.ROUTER_MODE:
+            # this is a fake PID, nothing would match
+            self.emulator.add_pid(-2)
+        else:
+            raise RuntimeError("Unknown Mode!")
         # finally load all pipes
         for pipe in copy.deepcopy(self.conf_dict[self.conf_name.get()]):
             if not isinstance(pipe, dict):

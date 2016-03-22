@@ -74,7 +74,7 @@ Please use [Github issues](https://github.com/FinalTheory/wireless-network-repro
 **We guarantee that we will try our best to meet the need of new features / bug fixes in first 30 issues;** and we actively welcome pull requests.
 
 
-## Changelog
+## ChangeLog
 
 Changes are tracked as Github [commits](https://github.com/FinalTheory/wireless-network-reproduction/commits/master) and [releases](https://github.com/FinalTheory/wireless-network-reproduction/releases).
 
