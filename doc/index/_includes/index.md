@@ -6,7 +6,7 @@
 
 Aspects that can be controlled by WNR include:
 
-- Bandwith
+- Bandwidth
 - Latency
 - Packet loss
 - Packet corruption
@@ -60,11 +60,6 @@ The following animation shows how to limit bandwidth of a specific process such 
 We use a time-related function `bandwidth(t) = 256 + 1024 * sin(t/4) (KB/s)` to emulate some sort of dynamic bandwidth limitation, and then use TCP data visualization of WNR to show the actual bandwidth variation, which results in the figure shown below:
 
 <img src="/wireless-network-reproduction/images/bandwidth.png"></img>
-
-
-## Architecture
-
-Coming soon.
 
 
 ## Contributions
