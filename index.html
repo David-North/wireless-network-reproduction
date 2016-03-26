@@ -28,6 +28,8 @@
 
 <p><img src="/wireless-network-reproduction/images/interface.png" width="500px"></img></p>
 
+<h2>Features</h2>
+
 <p>Aspects that can be controlled by WNR include:</p>
 
 <ul>
@@ -46,6 +48,13 @@
 <li>Gateway Mode: First share your internet connection through <a href="https://support.apple.com/kb/PH18704">Internet-Sharing</a>, and then WNR would shape / interfere the network traffic between your MacBook and your mobile device, just like a router.</li>
 <li>Emulator Mode: Just start an Android / iOS emulator, specify the process name in WNR, and then you will have emulated network condition in your virtual machine. In this mode you don&#39;t need a real mobile phone.</li>
 </ol>
+
+<h2>Advantages</h2>
+
+<ul>
+<li><strong>Extremely Customizable</strong>: WNR is designed to <strong>reproduce</strong> any type of network condition, which means that it is not just simply shaping the network traffic like <a href="http://linux.die.net/man/8/tc"><code>tc</code></a> or <a href="http://facebook.github.io/augmented-traffic-control/"><code>ATC</code></a>, but forcing the network to act as some specific pattern. With WNR, we could not only produce a bandwidth limited network, but also make the bandwidth vary by time, and even approach a user defined curve. The example configuration is <a href="https://github.com/FinalTheory/wireless-network-reproduction/blob/master/macdivert/examples/bandwidth.json">here</a>, and its actual effect is shown below.</li>
+<li><strong>Apply on Process</strong>: When running WNR on your host, you can choose to shape network traffic <strong>only for a specific process</strong>, and dump the entire conversation into a <code>.pcap</code> file, which could be used for detailed analyze.</li>
+</ul>
 
 <h2>Requirements</h2>
 
