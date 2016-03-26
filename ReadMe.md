@@ -31,7 +31,7 @@ So when WNR is started, all the incoming packets would first flow into `delay pi
 
 You can easily use `json` file to configure different types of WNR pipes. They will be described below in detail. The example `json` configuration files could be found [here](https://github.com/FinalTheory/wireless-network-reproduction/tree/master/macdivert/examples).
 
-Basically there are 7 different pipes supported by WNR by now:
+Basically there are 7 different pipes supported by WNR now:
 
 - Drop Pipe
 - Delay Pipe
@@ -39,7 +39,7 @@ Basically there are 7 different pipes supported by WNR by now:
 - Disorder Pipe
 - Throttle Pipe
 - Duplicate Pipe
-- Tamper Pipe
+- Bit Error Pipe
 
 
 ## Compile && Build
