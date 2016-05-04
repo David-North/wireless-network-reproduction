@@ -63,17 +63,18 @@ class BasicPipe(object):
 class DelayPipe(BasicPipe):
     def __init__(self, delay_time, t=None,
                  queue_size=Flags.DELAY_QUEUE_SIZE,
-                 size_filter_obj=None):
+                 ip_filter_obj=None, size_filter_obj=None):
         super(DelayPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'delay_pipe_create'), "argtypes",
-                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
+                [c_void_p, c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
         setattr(getattr(self._lib, 'delay_pipe_create'), "restype", c_void_p)
         arr_len = len(delay_time)
         arr_type = c_float * arr_len
         # then check packet size filter handle
-        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
-        self.handle = self._lib.delay_pipe_create(filter_handle, arr_len,
+        ip_filter_handle = None if ip_filter_obj is None else ip_filter_obj.handle
+        size_filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.delay_pipe_create(ip_filter_handle, size_filter_handle, arr_len,
                                                   arr_type(*list(t)) if t else None,
                                                   arr_type(*list(delay_time)),
                                                   queue_size)
@@ -81,101 +82,110 @@ class DelayPipe(BasicPipe):
 
 class DropPipe(BasicPipe):
     def __init__(self, drop_rate, t=None,
-                 size_filter_obj=None):
+                 ip_filter_obj=None, size_filter_obj=None):
         super(DropPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'drop_pipe_create'), "argtypes",
-                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float)])
+                [c_void_p, c_void_p, c_size_t, POINTER(c_float), POINTER(c_float)])
         setattr(getattr(self._lib, 'drop_pipe_create'), "restype", c_void_p)
         arr_len = len(drop_rate)
         arr_type = c_float * arr_len
         # then check packet size filter handle
-        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
-        self.handle = self._lib.drop_pipe_create(filter_handle, arr_len,
+        ip_filter_handle = None if ip_filter_obj is None else ip_filter_obj.handle
+        size_filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.drop_pipe_create(ip_filter_handle, size_filter_handle, arr_len,
                                                  arr_type(*list(t)) if t else None,
                                                  arr_type(*list(drop_rate)))
 
 
 class BandwidthPipe(BasicPipe):
-    def __init__(self, t, bandwidth, queue_size=Flags.DELAY_QUEUE_SIZE, size_filter_obj=None):
+    def __init__(self, t, bandwidth, queue_size=Flags.DELAY_QUEUE_SIZE,
+                 ip_filter_obj=None, size_filter_obj=None):
         super(BandwidthPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'bandwidth_pipe_create'), "argtypes",
-                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
+                [c_void_p, c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
         setattr(getattr(self._lib, 'bandwidth_pipe_create'), "restype", c_void_p)
         arr_len = len(t)
         arr_type = c_float * arr_len
         # then check packet size filter handle
-        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
-        self.handle = self._lib.bandwidth_pipe_create(filter_handle, arr_len,
-                                                      arr_type(*list(t)),
+        ip_filter_handle = None if ip_filter_obj is None else ip_filter_obj.handle
+        size_filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.bandwidth_pipe_create(ip_filter_handle, size_filter_handle,
+                                                      arr_len, arr_type(*list(t)),
                                                       arr_type(*list(bandwidth)),
                                                       queue_size)
 
 
 class BiterrPipe(BasicPipe):
-    def __init__(self, t, biterr_rate, max_flip, size_filter_obj=None):
+    def __init__(self, t, biterr_rate, max_flip, ip_filter_obj=None, size_filter_obj=None):
         super(BiterrPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'biterr_pipe_create'), "argtypes",
-                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_int])
+                [c_void_p, c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_int])
         setattr(getattr(self._lib, 'biterr_pipe_create'), "restype", c_void_p)
         arr_len = len(t)
         arr_type = c_float * arr_len
         # then check packet size filter handle
-        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
-        self.handle = self._lib.biterr_pipe_create(filter_handle, arr_len,
-                                                   arr_type(*list(t)),
+        ip_filter_handle = None if ip_filter_obj is None else ip_filter_obj.handle
+        size_filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.biterr_pipe_create(ip_filter_handle, size_filter_handle,
+                                                   arr_len, arr_type(*list(t)),
                                                    arr_type(*list(biterr_rate)), max_flip)
 
 
 class DisorderPipe(BasicPipe):
-    def __init__(self, t, disorder_rate, queue_size, max_disorder, size_filter_obj=None):
+    def __init__(self, t, disorder_rate, queue_size, max_disorder,
+                 ip_filter_obj=None, size_filter_obj=None):
         super(DisorderPipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'disorder_pipe_create'), "argtypes",
-                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t, c_int])
+                [c_void_p, c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t, c_int])
         setattr(getattr(self._lib, 'disorder_pipe_create'), "restype", c_void_p)
         arr_len = len(t)
         arr_type = c_float * arr_len
         # then check packet size filter handle
-        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
-        self.handle = self._lib.disorder_pipe_create(filter_handle, arr_len,
-                                                     arr_type(*list(t)),
+        ip_filter_handle = None if ip_filter_obj is None else ip_filter_obj.handle
+        size_filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.disorder_pipe_create(ip_filter_handle, size_filter_handle,
+                                                     arr_len, arr_type(*list(t)),
                                                      arr_type(*list(disorder_rate)),
                                                      queue_size, max_disorder)
 
 
 class DuplicatePipe(BasicPipe):
-    def __init__(self, t, duplicate_rate, max_duplicate, size_filter_obj=None):
+    def __init__(self, t, duplicate_rate, max_duplicate,
+                 ip_filter_obj=None, size_filter_obj=None):
         super(DuplicatePipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'duplicate_pipe_create'), "argtypes",
-                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
+                [c_void_p, c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
         setattr(getattr(self._lib, 'duplicate_pipe_create'), "restype", c_void_p)
         arr_len = len(t)
         arr_type = c_float * arr_len
         # then check packet size filter handle
-        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
-        self.handle = self._lib.duplicate_pipe_create(filter_handle, arr_len,
+        ip_filter_handle = None if ip_filter_obj is None else ip_filter_obj.handle
+        size_filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.duplicate_pipe_create(ip_filter_handle, size_filter_handle, arr_len,
                                                       arr_type(*list(t)),
                                                       arr_type(*list(duplicate_rate)),
                                                       max_duplicate)
 
 
 class ThrottlePipe(BasicPipe):
-    def __init__(self, t_start, t_end, queue_size, size_filter_obj=None):
+    def __init__(self, t_start, t_end, queue_size, ip_filter_obj=None, size_filter_obj=None):
         super(ThrottlePipe, self).__init__()
         # first set function signature
         setattr(getattr(self._lib, 'throttle_pipe_create'), "argtypes",
-                [c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
+                [c_void_p, c_void_p, c_size_t, POINTER(c_float), POINTER(c_float), c_size_t])
         setattr(getattr(self._lib, 'throttle_pipe_create'), "restype", c_void_p)
         arr_len = len(t_start)
         arr_type = c_float * arr_len
         # then check packet size filter handle
-        filter_handle = None if size_filter_obj is None else size_filter_obj.handle
-        self.handle = self._lib.throttle_pipe_create(filter_handle, arr_len,
-                                                     arr_type(*list(t_start)),
+        ip_filter_handle = None if ip_filter_obj is None else ip_filter_obj.handle
+        size_filter_handle = None if size_filter_obj is None else size_filter_obj.handle
+        self.handle = self._lib.throttle_pipe_create(ip_filter_handle, size_filter_handle,
+                                                     arr_len, arr_type(*list(t_start)),
                                                      arr_type(*list(t_end)),
                                                      queue_size)
 
@@ -198,6 +208,7 @@ class Emulator(object):
         'emulator_config_check': [c_void_p, c_char_p],
         'emulator_is_running': [c_void_p],
         'emulator_data_size': [c_void_p, c_int],
+        'emulator_create_ip_filter': [c_char_p, c_char_p, c_char_p, c_char_p, c_int, c_int],
         'emulator_create_size_filter': [c_size_t, POINTER(c_size_t), POINTER(c_float)],
     }
 
@@ -216,8 +227,16 @@ class Emulator(object):
         'emulator_config_check': c_int,
         'emulator_is_running': c_int,
         'emulator_data_size': c_uint64,
+        'emulator_create_ip_filter': c_void_p,
         'emulator_create_size_filter': c_void_p,
     }
+
+    class PacketIPFilter(object):
+        def __init__(self, ip_src, ip_src_mask, ip_dst,
+                     ip_dst_mask, port_src, port_dst):
+            lib = Emulator.libdivert_ref
+            self.handle = lib.emulator_create_ip_filter(ip_src, ip_src_mask, ip_dst,
+                                                        ip_dst_mask, port_src, port_dst)
 
     class PacketSizeFilter(object):
         def __init__(self, size_arr, rate_arr):
@@ -682,22 +701,36 @@ class EmulatorGUI(object):
                 dir_flag = Flags.DIRECTION_IN
             else:
                 raise RuntimeError('Unknown direction flag')
-            size_filter = self._create_filter(pipe.pop('filter', None))
+            ip_filter = self._create_ip_filter(pipe.pop('ip_filter', None))
+            size_filter = self._create_size_filter(pipe.pop('size_filter', None))
             try:
                 pipe_type = self.pipe_name2type[pipe_name.lower()]
             except:
                 raise RuntimeError('Invalid pipe type')
-            pipe_obj = pipe_type(size_filter_obj=size_filter, **pipe)
+            pipe_obj = pipe_type(ip_filter_obj=ip_filter,
+                                 size_filter_obj=size_filter, **pipe)
             self.emulator.add_pipe(pipe_obj, dir_flag)
 
-    def _create_filter(self, filter_dict):
+    def _create_size_filter(self, filter_dict):
         if not filter_dict:
             return None
-        size_arr = filter_dict.get('size')
-        rate_arr = filter_dict.get('rate')
-        if not size_arr or not rate_arr:
-            return None
+        size_arr = filter_dict['size']
+        rate_arr = filter_dict['rate']
         return Emulator.PacketSizeFilter(size_arr, rate_arr)
+
+    def _create_ip_filter(self, filter_dict):
+        if not filter_dict:
+            return None
+        src_str = filter_dict['src']
+        dst_str = filter_dict['dst']
+        strip_func = lambda x: x.strip()
+        src_addr, port_src = map(strip_func, src_str.split(':'))
+        src_addr, src_mask = map(strip_func, src_addr.split('/'))
+        dst_addr, port_dst = map(strip_func, dst_str.split(':'))
+        dst_addr, dst_mask = map(strip_func, dst_addr.split('/'))
+        return Emulator.PacketIPFilter(src_addr, src_mask,
+                                       dst_addr, dst_mask,
+                                       int(port_src), int(port_dst))
 
     def mainloop(self):
         self.master.mainloop()
