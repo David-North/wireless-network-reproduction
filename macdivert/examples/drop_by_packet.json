@@ -2,9 +2,9 @@
   {
     "pipe": "drop",
     "direction": "in",
-    "filter": {
-      "size": [],
-      "rate": []
+    "ip_filter": {
+      "src": "0.0.0.0/0.0.0.0:-1",
+      "dst": "0.0.0.0/0.0.0.0:-1"
     },
     "drop_rate": [0, 1, 0, 1, 0, 0, 1]
   }

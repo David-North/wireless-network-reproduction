@@ -2,10 +2,6 @@
   {
     "pipe": "delay",
     "direction": "in",
-    "filter": {
-      "size": [],
-      "rate": []
-    },
     "t": [0, 100],
     "delay_time": [0.15, 0.15],
     "queue_size": 1024
@@ -13,10 +9,6 @@
   {
     "pipe": "delay",
     "direction": "out",
-    "filter": {
-      "size": [],
-      "rate": []
-    },
     "t": [0, 100],
     "delay_time": [0.15, 0.15],
     "queue_size": 1024
@@ -24,10 +16,6 @@
   {
     "pipe": "bandwidth",
     "direction": "in",
-    "filter": {
-      "size": [],
-      "rate": []
-    },
     "t": [0, 100],
     "bandwidth": [30, 30],
     "queue_size": 4096
