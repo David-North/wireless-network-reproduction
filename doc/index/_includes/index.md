@@ -42,6 +42,20 @@ For Chinese users, please download WNR through [Baidu Yun](http://pan.baidu.com/
 For other users, check [Github releases](https://github.com/FinalTheory/wireless-network-reproduction/releases) for latest build.
 
 
+## Getting Started
+
+1. Download WNR from URL links above.
+2. Extract and save it into your hard drive.
+3. Run this app, click "Network Emulator" button, and enter your root password.
+4. If this is your first time to run this, you need to disable kernel extension checking according to the prompt.
+5. Restart your Mac and run this app again, you may see the emulator interface shown above.
+6. Click "Add Configuration" and select a default configuration or your customized ones.
+7. If you need to inspect on packets transmitted from / to your device, then select a position to save `.pcap` files.
+8. If you want to run emulation on real device, then start "Internet-Sharing" of macOS, and switch emulator mode to "WiFi" instead of "Local".
+9. If you want to run emulation on Android virtual machine, you need to specify the PID or process name ("vboxheadless" for VirtualBox based Android emulators) of your Android emulator.
+10. Finally, when everything is ready, click "Start" and check if the emulator is working as expected.
+
+
 ## Notice
 
 - **DO NOT** run this application directly in dmg image!!! You should first extract it from image, save it into a local folder, and then try to run it.

@@ -609,11 +609,14 @@ class EmulatorGUI(object):
         file_path = askopenfilename(title='Choose .json file', initialdir=dir_name)
         if file_path and os.path.isfile(file_path):
             try:
-                head, tail = os.path.split(file_path)
+                _, fname = os.path.split(file_path)
                 with open(file_path, 'r') as fid:
                     data = fid.read()
                     self.conf_dict[file_path] = json.loads(data)
-                    tk.Radiobutton(self.conf_frame, text=tail.split('.')[0],
+                    fname_sec = fname.split('.')
+                    if len(fname_sec) > 1:
+                        fname = '.'.join(fname_sec[:-1])
+                    tk.Radiobutton(self.conf_frame, text=fname,
                                    variable=self.conf_name,
                                    value=file_path).pack(side=tk.LEFT)
                     self.conf_name.set(file_path)

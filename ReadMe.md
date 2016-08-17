@@ -26,10 +26,12 @@ For example, if we want to emulate network latency and packet loss on incoming t
 
 So when WNR is started, all the incoming packets would first flow into `delay pipe`, delayed for sometime, and then injected into `drop pipe`, suffer some packet loss, and finally injected into next pipe. If there is no more pipes ahead, packets would be re-injected into IP stack and delivered to application. This is the entire working process of WNR.
 
+![Architecture](https://github.com/FinalTheory/wireless-network-reproduction/raw/master/resource/architecture.png)
+
 
 ## Configuration
 
-You can easily use `json` file to configure different types of WNR pipes. They will be described below in detail. The example `json` configuration files could be found [here](https://github.com/FinalTheory/wireless-network-reproduction/tree/master/macdivert/examples).
+You can easily use `json` file to configure different types of WNR pipes. Some example `json` configuration files could be found [here](https://github.com/FinalTheory/wireless-network-reproduction/tree/master/macdivert/examples).
 
 Basically there are 7 different pipes supported by WNR now:
 
@@ -41,10 +43,43 @@ Basically there are 7 different pipes supported by WNR now:
 - Duplicate Pipe
 - Bit Error Pipe
 
+The json configuration contains an array of objects, which represents pipe definitions. Each object contains some fields to describe the specific effect that would be applied to packets flowing through this pipe. Pipes would be connected in the order they're defined in configuration.
+
+Basically a json configuration would be like this:
+
+```
+[
+  {
+    "pipe": <pipe-type>,
+    "direction": <pipe-direction>,
+    "t": <array>,
+    "delay_time": <array>,
+    "queue_size": <value>,
+    "...": ...
+  },
+  {
+    ...
+  },
+  ......
+]
+```
+
+The `pipe` field controls what effect would be applied to the packets; `direction` chooses to apply effects on inbound or outbound packets; `t` and `delay_time` describes a single period of a periodic function, thus we could emulate some dynamic changing network condition; and finally `queue_size` is a detailed parameter to decide how many packets could be buffered in WNR before they're delivered to application. 
+
+If `t` is set, the emulated effect will change by time, and when the first period is finished, it would start a new period again. If `t` is omitted, then the effect would change by packet. For more details, it is strongly recommended to read the default configurations before you write your own ones.
+
 
 ## Compile && Build
 
-Coming soon.
+Run command:
+
+`python setup.py py2app`
+
+and then install all missing dependencies occurred during compilation.
+
+Notice that you may also need to manually patch the `py2app` module according to this [commit](https://bitbucket.org/ronaldoussoren/py2app/pull-requests/9/dont-attempt-to-recreate-the-python) to make things work.
+
+Please email me if you've got any other strange errors.
 
 
 ## Known issues
