@@ -2,6 +2,7 @@
 
 More introduction for the project is available at [https://finaltheory.github.io/wireless-network-reproduction/](https://finaltheory.github.io/wireless-network-reproduction/).
 
+Notice that this repo just contains some casual Python code which implements the GUI and C-binding, and **the core part of this project is actually [libdivert](https://github.com/FinalTheory/libdivert).**
 
 ## Overview
 
